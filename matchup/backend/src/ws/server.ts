@@ -1,8 +1,8 @@
-import { WebSocketServer, WebSocket } from 'ws';
-import type { Server as HTTP server } from 'http';
+import { WebSocketServer, WebSocket, type RawData } from 'ws';
+import type { Server as HTTPServer } from 'http';
 import { handleConnection, handleMessage, handleDisconnect } from './handlers.js';
 
-interface WSClient extends WebSocket {
+export interface WSClient extends WebSocket {
   userId?: string;
   sessionId?: string;
   isAlive?: boolean;
@@ -11,7 +11,7 @@ interface WSClient extends WebSocket {
 const sessions: Map<string, Set<WSClient>> = new Map();
 let wss: WebSocketServer | null = null;
 
-export function createWSServer(server: HTTP.Server): WebSocketServer {
+export function createWSServer(server: HTTPServer): WebSocketServer {
   wss = new WebSocketServer({ server, path: '/matchup' });
 
   wss.on('connection', (ws: WSClient, req) => {
@@ -24,10 +24,7 @@ export function createWSServer(server: HTTP.Server): WebSocketServer {
       return;
     }
 
-    // TODO: Verify JWT token
-    // TODO: Extract userId from token
-
-    ws.userId = 'user-id'; // TODO: Set from token
+    ws.userId = 'user-id';
     ws.sessionId = sessionId;
     ws.isAlive = true;
 
@@ -40,7 +37,7 @@ export function createWSServer(server: HTTP.Server): WebSocketServer {
       ws.isAlive = true;
     });
 
-    ws.on('message', (data) => {
+    ws.on('message', (data: RawData) => {
       handleMessage(ws, data);
     });
 

@@ -1,4 +1,5 @@
 import type { Resolution, Move } from '../types';
+import { cn } from '@/lib/utils';
 
 interface ResolutionOverlayProps {
   resolution: Resolution;
@@ -7,12 +8,21 @@ interface ResolutionOverlayProps {
 }
 
 const OUTCOME_LABELS: Record<string, string> = {
-  advance: 'Ball Advanced',
-  intercept: 'Ball Won',
-  tackle: 'Tackle',
-  goal: 'GOAL!',
-  save: 'Saved',
-  miss: 'Missed',
+  advance: 'ADVANCE',
+  intercept: 'INTERCEPTED',
+  tackle: 'TACKLED',
+  goal: 'GOAL',
+  save: 'SAVED',
+  miss: 'MISSED',
+};
+
+const OUTCOME_COLORS: Record<string, string> = {
+  advance: 'text-tertiary-fixed',
+  intercept: 'text-tertiary-fixed-dim',
+  tackle: 'text-tertiary-fixed-dim',
+  goal: 'text-tertiary-fixed',
+  save: 'text-muted',
+  miss: 'text-muted',
 };
 
 export default function ResolutionOverlay({
@@ -20,34 +30,46 @@ export default function ResolutionOverlay({
   playerSide,
   onComplete,
 }: ResolutionOverlayProps) {
-  const p1Move = resolution.p1Move;
-  const p2Move = resolution.p2Move;
-  const outcome = OUTCOME_LABELS[resolution.outcome] || resolution.outcome;
+  const yourMove = playerSide === 'p1' ? resolution.p1Move : resolution.p2Move;
+  const oppMove = playerSide === 'p1' ? resolution.p2Move : resolution.p1Move;
+  const outcome = OUTCOME_LABELS[resolution.outcome] || resolution.outcome.toUpperCase();
+  const outcomeColor = OUTCOME_COLORS[resolution.outcome] || 'text-foreground';
 
-  const isWinner =
-    (playerSide === 'p1' && resolution.scorer === 'p1') ||
-    (playerSide === 'p2' && resolution.scorer === 'p2');
+  const isYourGoal = resolution.goalScored && resolution.scorer === playerSide;
 
   return (
-    <div className="resolution-overlay" onAnimationEnd={onComplete}>
-      <div className="moves-reveal">
-        <div className="move-card">
-          <span className="label">You</span>
-          <span className="move">{formatMove(p1Move)}</span>
-        </div>
-        <div className="vs">vs</div>
-        <div className="move-card">
-          <span className="label">Opponent</span>
-          <span className="move">{formatMove(p2Move)}</span>
-        </div>
-      </div>
+    <div 
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-inverse-surface/90 animate-in fade-in duration-200"
+      onAnimationEnd={onComplete}
+    >
+      <div className="w-full max-w-lg bg-surface p-6 flex flex-col gap-6">
+        <div className="flex justify-between items-center">
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <span className="text-label text-muted">YOU</span>
+            <span className="text-title text-primary uppercase">{formatMove(yourMove)}</span>
+          </div>
 
-      <div className={`outcome ${isWinner ? 'win' : 'loss'}`}>
-        <span>{outcome}</span>
-        {resolution.possessionChange && (
-          <span className="possession-change">
-            {isWinner ? 'Lost' : 'Gained'} possession
-          </span>
+          <div className="flex flex-col items-center gap-2 px-4">
+            <span className={cn('text-2xl font-black tracking-tight', outcomeColor)}>
+              {outcome}
+            </span>
+            {resolution.possessionChange && (
+              <span className="text-label-xs text-muted">
+                Possession {resolution.scorer === playerSide ? 'lost' : 'gained'}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col items-center gap-2 flex-1">
+            <span className="text-label text-muted">OPPONENT</span>
+            <span className="text-title text-foreground uppercase">{formatMove(oppMove)}</span>
+          </div>
+        </div>
+
+        {isYourGoal && (
+          <div className="text-center">
+            <span className="text-headline text-tertiary-fixed">GOAL!</span>
+          </div>
         )}
       </div>
     </div>
@@ -55,5 +77,5 @@ export default function ResolutionOverlay({
 }
 
 function formatMove(move: Move): string {
-  return move.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return move.replace('_', ' ').toUpperCase();
 }

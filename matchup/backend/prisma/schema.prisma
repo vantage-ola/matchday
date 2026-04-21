@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String   @id @default(uuid())
+  username       String   @unique
+  password_hash  String
+  display_name   String
+  avatar_url     String?
+  wallet_balance Int      @default(1000)
+  created_at     DateTime @default(now())
+
+  player1_sessions MatchupSession[] @relation("Player1Sessions")
+  player2_sessions MatchupSession[] @relation("Player2Sessions")
+}
+
+model Fixture {
+  id             String   @id @default(uuid())
+  external_id    String   @unique
+  home_team      String
+  away_team      String
+  home_team_logo String?
+  away_team_logo String?
+  league         String
+  kickoff_at     DateTime
+  status         String   @default("scheduled")
+  real_home_goals Int?
+  real_away_goals Int?
+  raw_result     Json?
+  created_at     DateTime @default(now())
+
+  lobbies          Lobby[]
+  matchup_sessions MatchupSession[]
+}
+
+model Lobby {
+  id         String   @id @default(uuid())
+  fixture_id String
+  opens_at   DateTime
+  closes_at  DateTime
+  status     String   @default("open")
+  created_at DateTime @default(now())
+
+  fixture         Fixture         @relation(fields: [fixture_id], references: [id])
+  matchup_sessions MatchupSession[]
+}
+
+model MatchupSession {
+  id            String   @id @default(uuid())
+  lobby_id      String
+  fixture_id    String
+  player1_id    String
+  player2_id    String?
+  player1_side  String
+  player2_side  String
+  stake_per_player Int
+  pot           Int
+  game_mode     String   @default("matchup_only")
+  status        String   @default("pending")
+  started_at    DateTime?
+  ended_at      DateTime?
+  created_at    DateTime @default(now())
+
+  player1   User     @relation("Player1Sessions", fields: [player1_id], references: [id])
+  player2   User?    @relation("Player2Sessions", fields: [player2_id], references: [id])
+  fixture   Fixture  @relation(fields: [fixture_id], references: [id])
+  lobby     Lobby    @relation(fields: [lobby_id], references: [id])
+  result    MatchupResult?
+  settlement Settlement?
+}
+
+model MatchupResult {
+  id                  String   @id @default(uuid())
+  session_id          String   @unique
+  player1_goals       Int
+  player2_goals       Int
+  player1_possession  Int
+  player2_possession  Int
+  player1_tackles     Int
+  player2_tackles     Int
+  player1_shots      Int
+  player2_shots      Int
+  player1_assists    Int
+  player2_assists    Int
+  player_events       Json
+  created_at          DateTime @default(now())
+
+  session MatchupSession @relation(fields: [session_id], references: [id])
+}
+
+model Settlement {
+  id                      String    @id @default(uuid())
+  session_id              String    @unique
+  player1_matchup_score   Decimal?  @db.Decimal(5, 2)
+  player2_matchup_score   Decimal?  @db.Decimal(5, 2)
+  player1_accuracy_score  Decimal?  @db.Decimal(5, 2)
+  player2_accuracy_score  Decimal?  @db.Decimal(5, 2)
+  player1_combined_score  Decimal?  @db.Decimal(5, 2)
+  player2_combined_score  Decimal?  @db.Decimal(5, 2)
+  player1_payout          Int?
+  player2_payout          Int?
+  status                  String    @default("pending")
+  settled_at              DateTime?
+  created_at              DateTime  @default(now())
+
+  session MatchupSession @relation(fields: [session_id], references: [id])
+}

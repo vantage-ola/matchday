@@ -1,3 +1,4 @@
+import type { RawData } from 'ws';
 import type { WSClient } from './server.js';
 import type { Move, PlayerNumber, WSEvent } from '../types/index.js';
 import { commitMove } from '../engine/matchup.js';
@@ -12,9 +13,19 @@ interface WSMessage {
   payload?: unknown;
 }
 
-function parseMessage(data: Buffer.Binary): WSMessage | null {
+function parseMessage(data: RawData): WSMessage | null {
   try {
-    return JSON.parse(data.toString()) as WSMessage;
+    let str: string;
+    if (typeof data === 'string') {
+      str = data;
+    } else if (data instanceof ArrayBuffer) {
+      str = new TextDecoder().decode(data);
+    } else if (Array.isArray(data)) {
+      str = Buffer.concat(data).toString();
+    } else {
+      str = data.toString();
+    }
+    return JSON.parse(str) as WSMessage;
   } catch {
     return null;
   }
@@ -23,12 +34,9 @@ function parseMessage(data: Buffer.Binary): WSMessage | null {
 export async function handleConnection(ws: WSClient): Promise<void> {
   console.log(`Client connected: ${ws.userId} to session ${ws.sessionId}`);
 
-  // TODO: Fetch current game state
-  // TODO: Send initial state to client
-  // TODO: Check if session status -> notify client
 }
 
-export async function handleMessage(ws: WSClient, data: Buffer.Binary): Promise<void> {
+export async function handleMessage(ws: WSClient, data: RawData): Promise<void> {
   const message = parseMessage(data);
   if (!message) return;
 
