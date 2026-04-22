@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
+import { Gift } from 'lucide-react';
 import { PageLayout } from '@/components/layouts';
+import { api } from '@/lib/api';
+import { useAuthStore, useWalletStore } from '@/lib/store';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 interface Transaction {
   id: string;
@@ -9,56 +15,47 @@ interface Transaction {
   createdAt: string;
 }
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: '1',
-    type: 'credit',
-    amount: 566,
-    description: 'Won vs @drillz99 · Arsenal/Chelsea',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    type: 'credit',
-    amount: 200,
-    description: 'Daily Claim',
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    type: 'debit',
-    amount: 200,
-    description: 'Lost vs @tactic_master · Man City/Real Madrid',
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '4',
-    type: 'credit',
-    amount: 450,
-    description: 'Won vs @noob_coach · PSG/Bayern',
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '5',
-    type: 'debit',
-    amount: 1500,
-    description: 'Squad Upgrade: Midfielder',
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
 export default function Wallet() {
-  const [balance] = useState(4250);
-  const [transactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [canClaim] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [claiming, setClaiming] = useState(false);
+  const { user, token, updateBalance } = useAuthStore();
+  const { balance, canClaim, transactions, setBalance, setCanClaim, setTransactions } = useWalletStore();
+
+  const fetchWallet = useCallback(async () => {
+    if (!token) return;
+    
+    try {
+      const data = await api.getWallet(token);
+      setBalance(data.balance);
+      setTransactions(data.transactions as Transaction[]);
+      setCanClaim(true);
+    } catch {
+      toast.error('Failed to load wallet');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, setBalance, setTransactions, setCanClaim]);
 
   useEffect(() => {
-    // TODO: Fetch wallet balance and transactions
-  }, []);
+    fetchWallet();
+  }, [fetchWallet]);
 
   const handleClaim = async () => {
-    // TODO: Call POST /api/wallet/claim-daily
-    alert('Daily claim: +₦200');
+    if (!user || !token) return;
+    
+    setClaiming(true);
+    try {
+      const result = await api.claimDaily(token);
+      setBalance(result.balance);
+      updateBalance(result.balance);
+      setCanClaim(false);
+      toast.success(`Claimed ₦${result.claimedAmount}!`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to claim';
+      toast.error(message);
+    } finally {
+      setClaiming(false);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -76,57 +73,84 @@ export default function Wallet() {
   };
 
   return (
-    <PageLayout title="WALLET" balance={balance}>
+    <PageLayout title="WALLET" balance={user?.walletBalance ?? balance}>
       <div className="flex flex-col lg:flex-row h-full gap-6">
         <section className="lg:w-[35%] flex flex-col">
-          <div className="py-4 border-t border-b border-primary-container mb-6">
-            <span className="text-label text-muted">Available Balance</span>
-            <div className="text-display text-foreground mt-2">₦{balance.toLocaleString()}</div>
-          </div>
+          {loading ? (
+            <>
+              <div className="py-4 border-t border-b border-primary-container mb-6">
+                <Skeleton className="h-4 w-32 mb-2" />
+                <Skeleton className="h-12 w-40" />
+              </div>
+              <Skeleton className="h-12 w-full" />
+            </>
+          ) : (
+            <>
+              <div className="py-4 border-t border-b border-primary-container mb-6">
+                <span className="text-label text-muted">Available Balance</span>
+                <div className="text-display text-foreground mt-2">₦{balance.toLocaleString()}</div>
+              </div>
 
-          {canClaim && (
-            <button
-              onClick={handleClaim}
-              className="w-full py-3 px-4 border border-primary-container text-primary font-bold text-label hover:bg-surface-container transition-colors flex items-center justify-center gap-2"
-            >
-              <span className="material-symbols-outlined text-lg">redeem</span>
-              Claim daily ₦200
-            </button>
+              {canClaim && (
+                <button
+                  onClick={handleClaim}
+                  disabled={claiming}
+                  className="w-full py-3 px-4 border border-primary-container text-primary font-bold text-label hover:bg-surface-container transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Gift className="w-4 h-4" />
+                  {claiming ? 'CLAIMING...' : 'Claim daily ₦200'}
+                </button>
+              )}
+
+              <p className="text-label-xs text-muted mt-6">
+                Currency is for game use only.
+              </p>
+            </>
           )}
-
-          <p className="text-label-xs text-muted mt-6">
-            Currency is for game use only.
-          </p>
         </section>
 
         <section className="lg:w-[65%] flex flex-col">
           <h3 className="text-label text-muted mb-4">Recent Activity</h3>
 
-          <div className="flex flex-col">
-            {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex justify-between items-center py-4 border-b border-outline-variant/20 hover:bg-surface-container-high/50 transition-colors px-2 -mx-2"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium">{tx.description}</span>
-                  <span className="text-label-xs text-muted">{formatDate(tx.createdAt)}</span>
+          {loading ? (
+            <div className="flex flex-col gap-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex justify-between items-center py-4">
+                  <div className="flex flex-col gap-1">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                  <Skeleton className="h-4 w-16" />
                 </div>
-                <span className={cn(
-                  'text-sm font-bold',
-                  tx.type === 'credit' ? 'text-primary' : 'text-foreground'
-                )}>
-                  {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-muted">
+              No transactions yet
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {transactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex justify-between items-center py-4 border-b border-outline-variant/20 hover:bg-surface-container-high/50 transition-colors px-2 -mx-2"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{tx.description}</span>
+                    <span className="text-label-xs text-muted">{formatDate(tx.createdAt)}</span>
+                  </div>
+                  <span className={cn(
+                    'text-sm font-bold',
+                    tx.type === 'credit' ? 'text-primary' : 'text-foreground'
+                  )}>
+                    {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </PageLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

@@ -1,10 +1,11 @@
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
+import { Calendar, Wallet, User } from 'lucide-react';
 
 const navItems = [
-  { href: '/', icon: 'calendar_today', label: 'Fixtures' },
-  { href: '/wallet', icon: 'account_balance_wallet', label: 'Wallet' },
-  { href: '/profile', icon: 'person', label: 'Profile' },
+  { href: '/', icon: Calendar, label: 'Fixtures' },
+  { href: '/wallet', icon: Wallet, label: 'Wallet' },
+  { href: '/profile', icon: User, label: 'Profile' },
 ];
 
 export function BottomNav() {
@@ -14,6 +15,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex md:hidden justify-around items-center h-16 px-2 bg-surface border-t border-outline-variant/20">
       {navItems.map((item) => {
         const isActive = location.pathname === item.href;
+        const Icon = item.icon;
         return (
           <Link
             key={item.href}
@@ -23,7 +25,7 @@ export function BottomNav() {
               isActive ? 'text-primary scale-110' : 'text-muted scale-95'
             )}
           >
-            <span className="material-symbols-outlined">{item.icon}</span>
+            <Icon className="w-5 h-5" />
             <span className="text-label-xs mt-1">{item.label}</span>
           </Link>
         );

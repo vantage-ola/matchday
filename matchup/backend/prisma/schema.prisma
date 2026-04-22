@@ -14,9 +14,11 @@ model User {
   avatar_url     String?
   wallet_balance Int      @default(1000)
   created_at     DateTime @default(now())
+  is_bot         Boolean  @default(false)
 
   player1_sessions MatchupSession[] @relation("Player1Sessions")
   player2_sessions MatchupSession[] @relation("Player2Sessions")
+  transactions     Transaction[]
 }
 
 model Fixture {
@@ -72,6 +74,7 @@ model MatchupSession {
   lobby     Lobby    @relation(fields: [lobby_id], references: [id])
   result    MatchupResult?
   settlement Settlement?
+  transactions Transaction[]
 }
 
 model MatchupResult {
@@ -109,4 +112,17 @@ model Settlement {
   created_at              DateTime  @default(now())
 
   session MatchupSession @relation(fields: [session_id], references: [id])
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  user_id     String
+  type        String   // 'debit' | 'credit'
+  amount      Int
+  description String
+  session_id  String?
+  created_at  DateTime @default(now())
+
+  user    User             @relation(fields: [user_id], references: [id])
+  session MatchupSession?  @relation(fields: [session_id], references: [id])
 }

@@ -1,11 +1,13 @@
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
+import { Calendar, Wallet, User } from 'lucide-react';
 import WalletBadge from '../WalletBadge';
+import { ThemeToggle } from '../ThemeToggle';
 
 const navItems = [
-  { href: '/', icon: 'calendar_today', label: 'Fixtures' },
-  { href: '/wallet', icon: 'account_balance_wallet', label: 'Wallet' },
-  { href: '/profile', icon: 'person', label: 'Profile' },
+  { href: '/', icon: Calendar, label: 'Fixtures' },
+  { href: '/wallet', icon: Wallet, label: 'Wallet' },
+  { href: '/profile', icon: User, label: 'Profile' },
 ];
 
 interface SideNavProps {
@@ -25,6 +27,7 @@ export function SideNav({ balance = 0 }: SideNavProps) {
       <div className="flex-1 flex flex-col gap-2 px-4 mt-6">
         {navItems.map((item) => {
           const isActive = location.pathname === item.href;
+          const Icon = item.icon;
           return (
             <Link
               key={item.href}
@@ -36,11 +39,16 @@ export function SideNav({ balance = 0 }: SideNavProps) {
                   : 'text-muted hover:text-foreground hover:bg-surface-container-high/50 rounded'
               )}
             >
-              <span className="material-symbols-outlined text-xl">{item.icon}</span>
+              <Icon className="w-5 h-5" />
               <span className="text-label">{item.label}</span>
             </Link>
           );
         })}
+      </div>
+
+      <div className="px-4 py-2 flex items-center justify-between">
+        <span className="text-label-xs text-muted">THEME</span>
+        <ThemeToggle />
       </div>
 
       <div className="p-4 border-t border-outline-variant/20">

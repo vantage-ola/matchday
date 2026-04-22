@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import type { Server as HTTPServer } from 'http';
+import jwt from 'jsonwebtoken';
 import { handleConnection, handleMessage, handleDisconnect } from './handlers.js';
+import type { JwtPayload } from '../middleware/auth.js';
 
 export interface WSClient extends WebSocket {
   userId?: string;
@@ -10,6 +12,15 @@ export interface WSClient extends WebSocket {
 
 const sessions: Map<string, Set<WSClient>> = new Map();
 let wss: WebSocketServer | null = null;
+
+function verifyToken(token: string): JwtPayload | null {
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 export function createWSServer(server: HTTPServer): WebSocketServer {
   wss = new WebSocketServer({ server, path: '/matchup' });
@@ -24,7 +35,13 @@ export function createWSServer(server: HTTPServer): WebSocketServer {
       return;
     }
 
-    ws.userId = 'user-id';
+    const payload = verifyToken(token);
+    if (!payload) {
+      ws.close(4002, 'Invalid or expired token');
+      return;
+    }
+
+    ws.userId = payload.userId;
     ws.sessionId = sessionId;
     ws.isAlive = true;
 
@@ -48,6 +65,9 @@ export function createWSServer(server: HTTPServer): WebSocketServer {
     ws.on('error', (err) => {
       console.error('WebSocket error:', err);
     });
+
+    // Send initial game state on connect
+    handleConnection(ws);
   });
 
   const interval = setInterval(() => {
@@ -86,6 +106,22 @@ export function broadcastToSession(
 export function sendToClient(ws: WSClient, event: string, payload: unknown): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: event, payload }));
+  }
+}
+
+export function getClientsForSession(sessionId: string): Set<WSClient> {
+  return sessions.get(sessionId) ?? new Set();
+}
+
+export function removeClientFromSession(ws: WSClient): void {
+  if (ws.sessionId) {
+    const clients = sessions.get(ws.sessionId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) {
+        sessions.delete(ws.sessionId);
+      }
+    }
   }
 }
 

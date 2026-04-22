@@ -1,48 +1,146 @@
+import { ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { GameState, PlayerNumber } from '../types';
+import type { TeamColors } from '@/lib/team-colors';
 
 interface ScoreBarProps {
   gameState: GameState;
   playerSide: PlayerNumber;
   homeTeam: string;
   awayTeam: string;
+  league?: string;
+  yourColors?: TeamColors;
+  oppColors?: TeamColors;
+  yourAbbr?: string;
+  oppAbbr?: string;
 }
+
+const PHASE_NAMES = [
+  'KICKOFF',
+  'BUILD UP',
+  'HIGH PRESS',
+  'COUNTER ATTACK',
+  'DEEP BLOCK',
+  'FINAL PUSH',
+  'EXTRA TIME',
+];
 
 export default function ScoreBar({
   gameState,
   playerSide,
   homeTeam,
   awayTeam,
+  league = 'MATCHUP',
+  yourColors,
+  oppColors,
+  yourAbbr: yourAbbrProp,
+  oppAbbr: oppAbbrProp,
 }: ScoreBarProps) {
-  const isHome = playerSide === 'p1';
+  const navigate = useNavigate();
 
-  const homeScore = isHome ? gameState.score.p1 : gameState.score.p2;
-  const awayScore = isHome ? gameState.score.p2 : gameState.score.p1;
+  // Derive which score maps to home/away display
+  // p1 always = player1, session tells us if player1 = home or away
+  // For the score bar we show home on left, away on right
+  const homeScore = gameState.score.p1;
+  const awayScore = gameState.score.p2;
 
-  const yourTeam = isHome ? homeTeam : awayTeam;
-  const oppTeam = isHome ? awayTeam : homeTeam;
+  // Determine which team is "you"
+  const isP1 = playerSide === 'p1';
+  const homeIsYou = isP1; // p1 = player1 = the score order matches
+
+  const homeAbbr = yourAbbrProp && oppAbbrProp
+    ? (homeIsYou ? yourAbbrProp : oppAbbrProp)
+    : homeTeam.slice(0, 3).toUpperCase();
+  const awayAbbr = yourAbbrProp && oppAbbrProp
+    ? (homeIsYou ? oppAbbrProp : yourAbbrProp)
+    : awayTeam.slice(0, 3).toUpperCase();
+
+  const homeColor = homeIsYou ? yourColors?.primary : oppColors?.primary;
+  const awayColor = homeIsYou ? oppColors?.primary : yourColors?.primary;
+
+  const phaseName = PHASE_NAMES[Math.min(gameState.phase - 1, PHASE_NAMES.length - 1)] || `PHASE ${gameState.phase}`;
+
+  // Simulate match minute
+  const baseMinute = Math.floor(((gameState.phase - 1) / gameState.totalPhases) * 90);
+  const turnMinute = Math.floor(((gameState.turn - 1) / gameState.movesPerPhase) * (90 / gameState.totalPhases));
+  const displayMinute = Math.min(90, baseMinute + turnMinute);
 
   return (
-    <header className="flex justify-between items-center w-full px-4 h-16 hairline-b bg-surface-container-low shrink-0">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-4 h-4 bg-primary-container rounded" />
-          <span className="text-sm font-bold uppercase tracking-tight">{yourTeam}</span>
+    <header className="flex items-center w-full px-3 md:px-5 h-12 md:h-14 bg-surface-container-lowest/80 backdrop-blur-sm shrink-0 hairline-b">
+      {/* Left: Back + Phase */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <button
+          onClick={() => navigate('/')}
+          className="p-1 hover:bg-surface-container rounded transition-colors shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4 text-muted" />
+        </button>
+        <div className="min-w-0">
+          <span className="text-[10px] font-semibold text-muted tracking-wider block truncate">
+            {league}
+          </span>
+          <span className="text-xs md:text-sm font-bold tracking-tight block truncate">
+            {phaseName}
+          </span>
         </div>
-        <span className="text-display text-primary">{homeScore}</span>
       </div>
 
-      <div className="flex flex-col items-center">
-        <span className="text-label text-muted">Phase {gameState.phase} of {gameState.totalPhases}</span>
-        <div className="px-3 py-1 bg-surface-container-highest text-foreground text-label font-bold mt-1">
-          LIVE
+      {/* Center: Scoreline with team color badges */}
+      <div className="flex items-center gap-2 md:gap-4 px-4">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[8px] md:text-[9px] font-black shrink-0"
+            style={{
+              backgroundColor: homeColor || '#1B5E35',
+              color: (homeIsYou ? yourColors?.text : oppColors?.text) || '#FFF',
+            }}
+          >
+            {homeAbbr.slice(0, 2)}
+          </div>
+          <span className="text-xs md:text-sm font-bold uppercase tracking-tight text-foreground">
+            {homeAbbr}
+          </span>
+          {homeIsYou && (
+            <span className="text-[8px] font-bold text-muted">YOU</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 md:gap-2">
+          <span className="text-2xl md:text-3xl font-black tracking-tighter text-foreground tabular-nums">
+            {homeScore}
+          </span>
+          <span className="text-muted text-sm font-light">-</span>
+          <span className="text-2xl md:text-3xl font-black tracking-tighter text-foreground tabular-nums">
+            {awayScore}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {!homeIsYou && (
+            <span className="text-[8px] font-bold text-muted">YOU</span>
+          )}
+          <span className="text-xs md:text-sm font-bold uppercase tracking-tight text-muted">
+            {awayAbbr}
+          </span>
+          <div
+            className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[8px] md:text-[9px] font-black shrink-0"
+            style={{
+              backgroundColor: awayColor || '#111',
+              color: (homeIsYou ? oppColors?.text : yourColors?.text) || '#FFF',
+            }}
+          >
+            {awayAbbr.slice(0, 2)}
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <span className="text-display text-foreground">{awayScore}</span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold uppercase tracking-tight">{oppTeam}</span>
-          <div className="w-4 h-4 bg-tertiary-fixed rounded" />
+      {/* Right: Minute */}
+      <div className="flex items-center gap-3 flex-1 justify-end">
+        <div className="text-right">
+          <span className="text-[10px] font-semibold text-muted tracking-wider block">MIN</span>
+          <span className="text-sm md:text-base font-black tabular-nums block">
+            {displayMinute}'
+          </span>
         </div>
       </div>
     </header>

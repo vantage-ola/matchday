@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { GameState, Move, PlayerNumber } from '../types';
 
 interface AuthState {
@@ -12,16 +13,31 @@ interface AuthState {
   } | null;
   setToken: (token: string | null) => void;
   setUser: (user: AuthState['user']) => void;
+  updateBalance: (balance: number) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  user: null,
-  setToken: (token) => set({ token }),
-  setUser: (user) => set({ user }),
-  logout: () => set({ token: null, user: null }),
-}));
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      token: null,
+      user: null,
+      setToken: (token) => set({ token }),
+      setUser: (user) => set({ user }),
+      updateBalance: (balance) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, walletBalance: balance } : null,
+        })),
+      logout: () => {
+        localStorage.removeItem('matchup-auth');
+        set({ token: null, user: null });
+      },
+    }),
+    {
+      name: 'matchup-auth',
+    }
+  )
+);
 
 interface GameStoreState {
   gameState: GameState | null;
@@ -29,12 +45,14 @@ interface GameStoreState {
   selectedMove: Move | null;
   opponentCommitted: boolean;
   sessionStarted: boolean;
+  connectionStatus: 'disconnected' | 'connecting' | 'connected';
 
   setGameState: (state: GameState | null) => void;
   setPlayerSide: (side: PlayerNumber | null) => void;
   setSelectedMove: (move: Move | null) => void;
   setOpponentCommitted: (committed: boolean) => void;
   setSessionStarted: (started: boolean) => void;
+  setConnectionStatus: (status: GameStoreState['connectionStatus']) => void;
   reset: () => void;
 }
 
@@ -44,12 +62,14 @@ export const useGameStore = create<GameStoreState>((set) => ({
   selectedMove: null,
   opponentCommitted: false,
   sessionStarted: false,
+  connectionStatus: 'disconnected',
 
   setGameState: (gameState) => set({ gameState }),
   setPlayerSide: (playerSide) => set({ playerSide }),
   setSelectedMove: (selectedMove) => set({ selectedMove }),
   setOpponentCommitted: (opponentCommitted) => set({ opponentCommitted }),
   setSessionStarted: (sessionStarted) => set({ sessionStarted }),
+  setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   reset: () =>
     set({
       gameState: null,
@@ -57,6 +77,7 @@ export const useGameStore = create<GameStoreState>((set) => ({
       selectedMove: null,
       opponentCommitted: false,
       sessionStarted: false,
+      connectionStatus: 'disconnected',
     }),
 }));
 
@@ -89,4 +110,31 @@ export const useWalletStore = create<WalletState>((set) => ({
     set((state) => ({
       transactions: [transaction, ...state.transactions],
     })),
+}));
+
+interface FixtureState {
+  fixtures: Array<{
+    id: string;
+    homeTeam: string;
+    awayTeam: string;
+    homeTeamAbbr?: string;
+    awayTeamAbbr?: string;
+    league: string;
+    kickoffAt: string;
+    status: 'scheduled' | 'live' | 'finished';
+    homeScore?: number;
+    awayScore?: number;
+    minute?: number;
+    venue?: string;
+  }>;
+  loading: boolean;
+  setFixtures: (fixtures: FixtureState['fixtures']) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+export const useFixtureStore = create<FixtureState>((set) => ({
+  fixtures: [],
+  loading: false,
+  setFixtures: (fixtures) => set({ fixtures }),
+  setLoading: (loading) => set({ loading }),
 }));

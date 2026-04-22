@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { PageLayout } from '@/components/layouts';
 import { FixtureCard } from '@/components/FixtureCard';
+import { api } from '@/lib/api';
+import { useAuthStore, useFixtureStore } from '@/lib/store';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Fixture {
   id: string;
@@ -18,75 +22,27 @@ interface Fixture {
   venue?: string;
 }
 
-const MOCK_FIXTURES: Fixture[] = [
-  {
-    id: '1',
-    homeTeam: 'Arsenal',
-    awayTeam: 'Chelsea',
-    homeTeamAbbr: 'ARS',
-    awayTeamAbbr: 'CHE',
-    league: 'PREMIER LEAGUE',
-    kickoffAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    status: 'scheduled',
-    venue: 'Emirates Stadium',
-  },
-  {
-    id: '2',
-    homeTeam: 'Barcelona',
-    awayTeam: 'Real Madrid',
-    homeTeamAbbr: 'BAR',
-    awayTeamAbbr: 'RMA',
-    league: 'CHAMPIONS LEAGUE',
-    kickoffAt: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString(),
-    status: 'scheduled',
-    venue: 'Camp Nou',
-  },
-  {
-    id: '3',
-    homeTeam: 'Man City',
-    awayTeam: 'Liverpool',
-    homeTeamAbbr: 'MCI',
-    awayTeamAbbr: 'LIV',
-    league: 'PREMIER LEAGUE',
-    kickoffAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    status: 'live',
-    homeScore: 2,
-    awayScore: 1,
-    minute: 67,
-    venue: 'Etihad Stadium',
-  },
-  {
-    id: '4',
-    homeTeam: 'Bayern Munich',
-    awayTeam: 'Dortmund',
-    homeTeamAbbr: 'BAY',
-    awayTeamAbbr: 'DOR',
-    league: 'BUNDESLIGA',
-    kickoffAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-    status: 'scheduled',
-    venue: 'Allianz Arena',
-  },
-  {
-    id: '5',
-    homeTeam: 'PSG',
-    awayTeam: 'Marseille',
-    homeTeamAbbr: 'PSG',
-    awayTeamAbbr: 'MAR',
-    league: 'LIGUE 1',
-    kickoffAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    status: 'scheduled',
-    venue: 'Parc des Princes',
-  },
-];
-
 export default function Home() {
-  const [fixtures] = useState<Fixture[]>(MOCK_FIXTURES);
-  const [balance] = useState(1200);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { fixtures, setFixtures } = useFixtureStore();
+  const { user } = useAuthStore();
+
+  const fetchFixtures = useCallback(async () => {
+    try {
+      const data = await api.getFixtures();
+      setFixtures(data.fixtures as Fixture[]);
+    } catch (error) {
+      toast.error('Failed to load fixtures');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [setFixtures]);
 
   useEffect(() => {
-    // TODO: Fetch fixtures from API
-  }, []);
+    fetchFixtures();
+  }, [fetchFixtures]);
 
   const handleJoin = (fixtureId: string) => {
     navigate(`/fixture/${fixtureId}`);
@@ -96,20 +52,50 @@ export default function Home() {
   const dateStr = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <PageLayout title="FIXTURES" balance={balance}>
+    <PageLayout title="FIXTURES" balance={user?.walletBalance ?? 0}>
       <div className="mb-6">
         <span className="text-label text-muted">{dateStr.toUpperCase()}</span>
       </div>
 
-      <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
-        {fixtures.map((fixture) => (
-          <FixtureCard
-            key={fixture.id}
-            fixture={fixture}
-            onJoin={() => handleJoin(fixture.id)}
-          />
-        ))}
-      </div>
+      {loading ? (
+        <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="bg-surface-container-low border border-outline-variant/20 rounded overflow-hidden">
+              <div className="p-4 border-b border-outline-variant/20 bg-surface-container-high">
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <div className="p-6 flex items-center justify-between">
+                <Skeleton className="h-12 w-12 rounded-full" />
+                <Skeleton className="h-8 w-8" />
+                <Skeleton className="h-12 w-12 rounded-full" />
+              </div>
+              <div className="p-4">
+                <Skeleton className="h-10 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : fixtures.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-64 text-center">
+          <p className="text-muted mb-4">No upcoming fixtures</p>
+          <button
+            onClick={fetchFixtures}
+            className="text-primary font-semibold hover:underline"
+          >
+            Refresh
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
+          {fixtures.map((fixture) => (
+            <FixtureCard
+              key={fixture.id}
+              fixture={fixture}
+              onJoin={() => handleJoin(fixture.id)}
+            />
+          ))}
+        </div>
+      )}
     </PageLayout>
   );
 }

@@ -32,28 +32,30 @@ async function fetchApi<T>(
   return res.json();
 }
 
+export type AuthUser = {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  walletBalance: number;
+};
+
 export const api = {
   // Auth
   register: (data: { username: string; password: string; displayName: string }) =>
-    fetchApi<{ token: string }>('/api/auth/register', {
+    fetchApi<{ token: string; user: AuthUser }>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   login: (data: { username: string; password: string }) =>
-    fetchApi<{ token: string }>('/api/auth/login', {
+    fetchApi<{ token: string; user: AuthUser }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   getMe: (token: string) =>
-    fetchApi<{
-      id: string;
-      username: string;
-      displayName: string;
-      avatarUrl: string | null;
-      walletBalance: number;
-    }>('/api/auth/me', { token }),
+    fetchApi<AuthUser>('/api/auth/me', { token }),
 
   // Fixtures
   getFixtures: () => fetchApi<{ fixtures: unknown[] }>('/api/fixtures'),
@@ -70,7 +72,18 @@ export const api = {
     data: { side: 'home' | 'away'; stake: number; gameMode: string },
     token: string
   ) =>
-    fetchApi<{ sessionId: string }>(`/api/fixtures/${fixtureId}/join`, {
+    fetchApi<{ sessionId?: string; position?: number; status: string }>(`/api/fixtures/${fixtureId}/join`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    }),
+
+  createBotSession: (
+    fixtureId: string,
+    data: { side: 'home' | 'away'; stake: number; gameMode: string },
+    token: string
+  ) =>
+    fetchApi<{ sessionId: string }>(`/api/fixtures/${fixtureId}/bot`, {
       method: 'POST',
       body: JSON.stringify(data),
       token,
@@ -78,7 +91,7 @@ export const api = {
 
   // Sessions
   getSession: (sessionId: string, token: string) =>
-    fetchApi<{ session: unknown; gameState: unknown }>(
+    fetchApi<{ session: unknown; gameState: unknown; playerSide: string }>(
       `/api/sessions/${sessionId}`,
       { token }
     ),
@@ -109,8 +122,12 @@ export const api = {
     }>('/api/wallet', { token }),
 
   claimDaily: (token: string) =>
-    fetchApi<{ balance: number }>('/api/wallet/claim-daily', {
+    fetchApi<{ balance: number; claimedAmount: number }>('/api/wallet/claim-daily', {
       method: 'POST',
       token,
     }),
+
+  // Match history
+  getMatchHistory: (token: string) =>
+    fetchApi<{ history: unknown[] }>('/api/sessions/user/history', { token }),
 };

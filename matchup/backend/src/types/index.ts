@@ -97,6 +97,12 @@ export interface User {
   createdAt: Date;
 }
 
+export interface TeamColors {
+  primary: string;
+  secondary: string;
+  text: string;
+}
+
 export interface Fixture {
   id: string;
   externalId: string;
@@ -111,6 +117,8 @@ export interface Fixture {
   realAwayGoals: number | null;
   rawResult: Record<string, unknown> | null;
   createdAt: Date;
+  homeTeamColors?: TeamColors;
+  awayTeamColors?: TeamColors;
 }
 
 export interface Lobby {

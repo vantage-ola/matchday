@@ -5,6 +5,9 @@
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant high-contrast (&:is(.high-contrast *));
+@custom-variant night-mode (&:is(.night-mode *));
+@custom-variant pitch-dark (&:is(.pitch-dark *));
 
 @layer base {
   :root {
@@ -193,6 +196,261 @@
     --success: 142 35% 71%;
     --success-foreground: 0 0% 7%;
   }
+
+  .high-contrast {
+    /* High Contrast Mode - Stronger color differentiation for accessibility */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    
+    /* Primary - Brighter Green */
+    --primary: 142 70% 25%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Primary Container */
+    --primary-container: 142 60% 30%;
+    --primary-container-foreground: 0 0% 100%;
+    
+    /* Secondary */
+    --secondary: 142 100% 40%;
+    --secondary-foreground: 0 0% 0%;
+    
+    /* Secondary Container */
+    --secondary-container: 142 100% 85%;
+    --secondary-container-foreground: 142 70% 20%;
+    
+    /* Tertiary - Mint Accent */
+    --tertiary: 142 100% 30%;
+    --tertiary-foreground: 0 0% 100%;
+    
+    /* Tertiary Fixed */
+    --tertiary-fixed: 150 90% 80%;
+    --tertiary-fixed-foreground: 142 100% 10%;
+    
+    /* Tertiary Fixed Dim */
+    --tertiary-fixed-dim: 150 70% 70%;
+    
+    /* Muted - More visible */
+    --muted: 0 0% 30%;
+    --muted-foreground: 0 0% 30%;
+    
+    /* Accent */
+    --accent: 0 0% 30%;
+    --accent-foreground: 0 0% 100%;
+    
+    /* Destructive - Brighter red */
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Surfaces */
+    --surface: 0 0% 95%;
+    --surface-container: 0 0% 90%;
+    --surface-container-low: 0 0% 93%;
+    --surface-container-high: 0 0% 85%;
+    --surface-container-highest: 0 0% 80%;
+    --surface-container-lowest: 0 0% 100%;
+    
+    /* Card */
+    --card: 0 0% 95%;
+    --card-foreground: 0 0% 0%;
+    
+    /* Popover */
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+    
+    /* Border & Input - More visible */
+    --border: 0 0% 0%;
+    --input: 0 0% 0%;
+    --ring: 142 70% 25%;
+    
+    /* Outline */
+    --outline: 0 0% 20%;
+    --outline-variant: 0 0% 40%;
+    
+    /* Error */
+    --error: 0 100% 50%;
+    --error-container: 0 100% 90%;
+    --on-error: 0 0% 0%;
+    --on-error-container: 0 100% 30%;
+    
+    /* Inverse */
+    --inverse-surface: 0 0% 0%;
+    --inverse-on-surface: 0 0% 100%;
+    --inverse-primary: 142 100% 80%;
+    
+    /* Success */
+    --success: 142 70% 25%;
+    --success-foreground: 0 0% 100%;
+  }
+
+  .night-mode {
+    /* Night Mode - Reduced blue light for evening use */
+    --background: 30 20% 12%;
+    --foreground: 40 30% 90%;
+    
+    /* Primary - Warm green */
+    --primary: 142 40% 65%;
+    --primary-foreground: 30 20% 12%;
+    
+    /* Primary Container */
+    --primary-container: 142 50% 25%;
+    --primary-container-foreground: 40 30% 90%;
+    
+    /* Secondary */
+    --secondary: 142 80% 35%;
+    --secondary-foreground: 40 30% 90%;
+    
+    /* Secondary Container */
+    --secondary-container: 142 60% 20%;
+    --secondary-container-foreground: 142 80% 75%;
+    
+    /* Tertiary */
+    --tertiary: 142 90% 30%;
+    --tertiary-foreground: 40 30% 90%;
+    
+    /* Tertiary Fixed - Warm mint */
+    --tertiary-fixed: 150 50% 55%;
+    --tertiary-fixed-foreground: 142 90% 15%;
+    
+    /* Tertiary Fixed Dim */
+    --tertiary-fixed-dim: 150 45% 50%;
+    
+    /* Muted - Warm grey */
+    --muted: 30 15% 45%;
+    --muted-foreground: 30 15% 45%;
+    
+    /* Accent */
+    --accent: 30 20% 18%;
+    --accent-foreground: 40 30% 90%;
+    
+    /* Destructive - Warm red */
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 40 30% 90%;
+    
+    /* Surfaces - Warm tones */
+    --surface: 30 20% 15%;
+    --surface-container: 30 20% 18%;
+    --surface-container-low: 30 20% 16%;
+    --surface-container-high: 30 20% 22%;
+    --surface-container-highest: 30 20% 26%;
+    --surface-container-lowest: 30 20% 12%;
+    
+    /* Card */
+    --card: 30 20% 18%;
+    --card-foreground: 40 30% 90%;
+    
+    /* Popover */
+    --popover: 30 20% 15%;
+    --popover-foreground: 40 30% 90%;
+    
+    /* Border & Input */
+    --border: 30 15% 28%;
+    --input: 30 15% 22%;
+    --ring: 142 40% 65%;
+    
+    /* Outline */
+    --outline: 30 15% 40%;
+    --outline-variant: 30 15% 28%;
+    
+    /* Error */
+    --error: 0 60% 45%;
+    --error-container: 0 60% 20%;
+    --on-error: 40 30% 90%;
+    --on-error-container: 0 80% 85%;
+    
+    /* Inverse */
+    --inverse-surface: 40 30% 90%;
+    --inverse-on-surface: 30 20% 12%;
+    --inverse-primary: 142 50% 25%;
+    
+    /* Success */
+    --success: 142 40% 65%;
+    --success-foreground: 30 20% 12%;
+  }
+
+  .pitch-dark {
+    /* Pitch Dark - Pure black OLED-friendly */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 92%;
+    
+    /* Primary */
+    --primary: 142 35% 65%;
+    --primary-foreground: 0 0% 0%;
+    
+    /* Primary Container */
+    --primary-container: 142 50% 22%;
+    --primary-container-foreground: 0 0% 92%;
+    
+    /* Secondary */
+    --secondary: 142 90% 30%;
+    --secondary-foreground: 0 0% 92%;
+    
+    /* Secondary Container */
+    --secondary-container: 142 60% 15%;
+    --secondary-container-foreground: 142 90% 75%;
+    
+    /* Tertiary */
+    --tertiary: 142 100% 25%;
+    --tertiary-foreground: 0 0% 92%;
+    
+    /* Tertiary Fixed */
+    --tertiary-fixed: 150 55% 55%;
+    --tertiary-fixed-foreground: 142 100% 12%;
+    
+    /* Tertiary Fixed Dim */
+    --tertiary-fixed-dim: 150 50% 50%;
+    
+    /* Muted */
+    --muted: 0 0% 40%;
+    --muted-foreground: 0 0% 40%;
+    
+    /* Accent */
+    --accent: 0 0% 10%;
+    --accent-foreground: 0 0% 92%;
+    
+    /* Destructive */
+    --destructive: 0 60% 40%;
+    --destructive-foreground: 0 0% 92%;
+    
+    /* Surfaces */
+    --surface: 0 0% 4%;
+    --surface-container: 0 0% 8%;
+    --surface-container-low: 0 0% 6%;
+    --surface-container-high: 0 0% 12%;
+    --surface-container-highest: 0 0% 16%;
+    --surface-container-lowest: 0 0% 0%;
+    
+    /* Card */
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 92%;
+    
+    /* Popover */
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 92%;
+    
+    /* Border & Input */
+    --border: 0 0% 20%;
+    --input: 0 0% 12%;
+    --ring: 142 35% 65%;
+    
+    /* Outline */
+    --outline: 0 0% 35%;
+    --outline-variant: 0 0% 18%;
+    
+    /* Error */
+    --error: 0 60% 40%;
+    --error-container: 0 50% 15%;
+    --on-error: 0 0% 92%;
+    --on-error-container: 0 80% 80%;
+    
+    /* Inverse */
+    --inverse-surface: 0 0% 92%;
+    --inverse-on-surface: 0 0% 0%;
+    --inverse-primary: 142 50% 22%;
+    
+    /* Success */
+    --success: 142 35% 65%;
+    --success-foreground: 0 0% 0%;
+  }
   
   * {
     @apply border-border outline-ring/50;
@@ -367,6 +625,27 @@
   .hairline-l {
     border-left: 1px solid hsl(var(--outline-variant) / 0.2);
   }
+}
+
+/* Pitch mowing stripes */
+.pitch-stripes {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 60px,
+    transparent 60px,
+    transparent 120px
+  );
+}
+
+/* Player node pulse for controlled player */
+@keyframes player-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+}
+
+.player-pulse {
+  animation: player-pulse 2s ease-in-out infinite;
 }
 
 ::-webkit-scrollbar {

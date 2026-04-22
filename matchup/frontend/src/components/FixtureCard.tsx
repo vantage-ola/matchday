@@ -1,7 +1,16 @@
+import { getTeamColors, getTeamAbbr } from '@/lib/team-colors';
+
+interface TeamInfo {
+  name: string;
+  logo?: string;
+}
+
 interface Fixture {
   id: string;
   homeTeam: string;
   awayTeam: string;
+  homeTeamLogo?: string;
+  awayTeamLogo?: string;
   homeTeamAbbr?: string;
   awayTeamAbbr?: string;
   league: string;
@@ -23,6 +32,11 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
   const kickoffTime = new Date(fixture.kickoffAt);
   const timeStr = kickoffTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
+  const homeColors = getTeamColors(fixture.homeTeam);
+  const awayColors = getTeamColors(fixture.awayTeam);
+  const homeAbbr = getTeamAbbr(fixture.homeTeam);
+  const awayAbbr = getTeamAbbr(fixture.awayTeam);
+
   return (
     <article className="bg-surface-container-low border border-outline-variant/20 rounded overflow-hidden flex flex-col min-w-[280px]">
       {isLive && (
@@ -43,9 +57,20 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
 
       <div className="p-6 flex items-center justify-between">
         <div className="flex flex-col items-center gap-3 w-1/3">
-          <div className="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center font-bold text-lg">
-            {fixture.homeTeamAbbr || fixture.homeTeam.slice(0, 3).toUpperCase()}
-          </div>
+          {fixture.homeTeamLogo ? (
+            <img
+              src={fixture.homeTeamLogo}
+              alt={fixture.homeTeam}
+              className="w-12 h-12 object-contain"
+            />
+          ) : (
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm"
+              style={{ backgroundColor: homeColors.primary, color: homeColors.text }}
+            >
+              {homeAbbr}
+            </div>
+          )}
           <span className="text-title text-center">{fixture.homeTeam}</span>
         </div>
 
@@ -60,9 +85,20 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
         </div>
 
         <div className="flex flex-col items-center gap-3 w-1/3">
-          <div className="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center font-bold text-lg">
-            {fixture.awayTeamAbbr || fixture.awayTeam.slice(0, 3).toUpperCase()}
-          </div>
+          {fixture.awayTeamLogo ? (
+            <img
+              src={fixture.awayTeamLogo}
+              alt={fixture.awayTeam}
+              className="w-12 h-12 object-contain"
+            />
+          ) : (
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm"
+              style={{ backgroundColor: awayColors.primary, color: awayColors.text }}
+            >
+              {awayAbbr}
+            </div>
+          )}
           <span className="text-title text-center">{fixture.awayTeam}</span>
         </div>
       </div>

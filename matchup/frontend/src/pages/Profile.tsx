@@ -1,184 +1,240 @@
-import { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { LogOut } from 'lucide-react';
 import { PageLayout } from '@/components/layouts';
+import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/store';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ThemeSelector } from '@/components/ThemeToggle';
+import { getTeamColors, getTeamAbbr } from '@/lib/team-colors';
+import { cn } from '@/lib/utils';
 
-interface MatchHistory {
+interface MatchHistoryItem {
   id: string;
+  fixtureId: string;
   homeTeam: string;
   awayTeam: string;
-  homeScore: number;
-  awayScore: number;
-  yourScore: number;
-  oppScore: number;
-  result: 'win' | 'loss' | 'draw';
+  yourSide: string;
+  opponent: { displayName: string; isBot: boolean };
+  yourGoals: number;
+  oppGoals: number;
+  resultTag: 'W' | 'L' | 'D';
+  stake: number;
   payout: number;
-  league: string;
-  createdAt: string;
+  netProfit: number;
+  playedAt: string;
 }
 
-const MOCK_MATCHES: MatchHistory[] = [
-  {
-    id: '1',
-    homeTeam: 'ARS',
-    awayTeam: 'CHE',
-    homeScore: 2,
-    awayScore: 1,
-    yourScore: 2,
-    oppScore: 1,
-    result: 'win',
-    payout: 566,
-    league: 'UCL',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    homeTeam: 'MCI',
-    awayTeam: 'ARS',
-    homeScore: 1,
-    awayScore: 0,
-    yourScore: 0,
-    oppScore: 0,
-    result: 'draw',
-    payout: 0,
-    league: 'PL',
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    homeTeam: 'ARS',
-    awayTeam: 'TOT',
-    homeScore: 3,
-    awayScore: 1,
-    yourScore: 3,
-    oppScore: 1,
-    result: 'win',
-    payout: 420,
-    league: 'PL',
-    createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '4',
-    homeTeam: 'LIV',
-    awayTeam: 'ARS',
-    homeScore: 2,
-    awayScore: 0,
-    yourScore: 0,
-    oppScore: 2,
-    result: 'loss',
-    payout: -200,
-    league: 'PL',
-    createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '5',
-    homeTeam: 'BAR',
-    awayTeam: 'RMA',
-    homeScore: 2,
-    awayScore: 2,
-    yourScore: 2,
-    oppScore: 1,
-    result: 'win',
-    payout: 380,
-    league: 'UCL',
-    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
 export default function Profile() {
-  const [profile] = useState({
-    displayName: 'John Doe',
-    username: 'jdoe',
-  });
-  const [matches] = useState<MatchHistory[]>(MOCK_MATCHES);
-  const [balance] = useState(4250);
+  const [loading, setLoading] = useState(true);
+  const [matches, setMatches] = useState<MatchHistoryItem[]>([]);
+  const { user, token, logout } = useAuthStore();
+  const navigate = useNavigate();
 
-  const wins = matches.filter((m) => m.result === 'win').length;
+  const fetchProfile = useCallback(async () => {
+    if (!token) return;
+    try {
+      await api.getMe(token);
+      const historyData = await api.getMatchHistory(token);
+      setMatches(historyData.history as MatchHistoryItem[]);
+    } catch {
+      toast.error('Failed to load profile');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const handleLogout = () => {
+    logout();
+    toast.success('Logged out successfully');
+  };
+
+  const wins = matches.filter((m) => m.resultTag === 'W').length;
+  const losses = matches.filter((m) => m.resultTag === 'L').length;
   const total = matches.length;
   const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+  const totalProfit = matches.reduce((sum, m) => sum + m.netProfit, 0);
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today, ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday, ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
 
   return (
-    <PageLayout title="PROFILE" balance={balance}>
+    <PageLayout title="PROFILE" balance={user?.walletBalance ?? 0}>
       <div className="flex flex-col lg:flex-row h-full gap-6">
         <section className="lg:w-[35%] flex flex-col">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-bold">
-              {profile.displayName.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex flex-col">
-              <span className="text-title">{profile.displayName}</span>
-              <span className="text-label text-muted">@{profile.username}</span>
-            </div>
-          </div>
+          {loading ? (
+            <>
+              <div className="flex items-center gap-4 mb-6">
+                <Skeleton className="w-12 h-12 rounded-full" />
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+              <div className="hairline-b mb-6" />
+              <div className="grid grid-cols-3 gap-4">
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+                <Skeleton className="h-16" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-bold">
+                  {user?.displayName?.charAt(0).toUpperCase() || '?'}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-title">{user?.displayName || 'User'}</span>
+                  <span className="text-label text-muted">@{user?.username || 'username'}</span>
+                </div>
+              </div>
 
-          <div className="hairline-b mb-6" />
+              <div className="hairline-b mb-6" />
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="flex flex-col border-r border-outline-variant/20 pr-4">
-              <span className="text-label-xs text-muted">PLAYED</span>
-              <span className="text-title mt-1">{total}</span>
-            </div>
-            <div className="flex flex-col border-r border-outline-variant/20 px-4">
-              <span className="text-label-xs text-muted">WON</span>
-              <span className="text-title mt-1">{wins}</span>
-            </div>
-            <div className="flex flex-col pl-4">
-              <span className="text-label-xs text-muted">WIN RATE</span>
-              <span className="text-title mt-1">{winRate}%</span>
-            </div>
-          </div>
+              <div className="grid grid-cols-4 gap-3">
+                <div className="flex flex-col">
+                  <span className="text-label-xs text-muted">PLAYED</span>
+                  <span className="text-title mt-1">{total}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-label-xs text-muted">WON</span>
+                  <span className="text-title mt-1 text-primary">{wins}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-label-xs text-muted">LOST</span>
+                  <span className="text-title mt-1">{losses}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-label-xs text-muted">WIN%</span>
+                  <span className="text-title mt-1">{winRate}%</span>
+                </div>
+              </div>
 
-          <div className="hairline-b my-6" />
+              <div className="mt-4 py-3 border-t border-b border-outline-variant/20">
+                <span className="text-label-xs text-muted block">TOTAL P&L</span>
+                <span className={cn(
+                  'text-xl font-black',
+                  totalProfit > 0 ? 'text-primary' : totalProfit < 0 ? 'text-red-500' : 'text-foreground'
+                )}>
+                  {totalProfit > 0 ? '+' : ''}₦{totalProfit.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="hairline-b my-6" />
+
+              <ThemeSelector />
+
+              <button
+                onClick={handleLogout}
+                className="mt-auto flex items-center gap-2 text-muted hover:text-destructive transition-colors py-2"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="text-sm font-medium">Sign out</span>
+              </button>
+            </>
+          )}
         </section>
 
         <section className="lg:w-[65%] flex flex-col">
-          <h3 className="text-label text-muted mb-4">RECENT MATCHES</h3>
+          <h3 className="text-label text-muted mb-4">MATCH HISTORY</h3>
 
-          <div className="flex flex-col">
-            {matches.map((match) => (
-              <div
-                key={match.id}
-                className="flex items-center justify-between py-4 border-b border-outline-variant/20 hover:bg-surface-container-high/50 transition-colors"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-bold">
-                    {match.homeTeam} vs {match.awayTeam}
-                  </span>
-                  <span className="text-label-xs text-muted">
-                    {formatDate(match.createdAt)} · {match.league}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium">
-                    {match.yourScore}-{match.oppScore}
-                  </span>
-
-                  <div
-                    className={cn(
-                      'w-6 h-6 flex items-center justify-center text-xs font-bold',
-                      match.result === 'win'
-                        ? 'bg-primary-container text-on-primary'
-                        : match.result === 'loss'
-                        ? 'bg-surface border border-primary-container text-primary-container'
-                        : 'bg-surface border border-outline text-muted'
-                    )}
-                  >
-                    {match.result.charAt(0).toUpperCase()}
+          {loading ? (
+            <div className="flex flex-col gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center justify-between py-4">
+                  <div className="flex flex-col gap-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
+                  <Skeleton className="h-6 w-6" />
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : matches.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 text-center">
+              <p className="text-muted">No matches played yet</p>
+              <p className="text-label-xs text-muted mt-1">Join a fixture to start playing</p>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {matches.map((match) => {
+                const yourTeam = match.yourSide === 'home' ? match.homeTeam : match.awayTeam;
+                const colors = getTeamColors(yourTeam);
+                const abbr = getTeamAbbr(yourTeam);
+
+                return (
+                  <button
+                    key={match.id}
+                    onClick={() => navigate(`/settlement/${match.id}`)}
+                    className="flex items-center justify-between py-4 border-b border-outline-variant/20 hover:bg-surface-container-high/50 transition-colors px-2 -mx-2 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                        style={{ backgroundColor: colors.primary, color: colors.text }}
+                      >
+                        {abbr}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-bold">
+                          {match.homeTeam} vs {match.awayTeam}
+                        </span>
+                        <span className="text-label-xs text-muted">
+                          {formatDate(match.playedAt)} · vs {match.opponent.isBot ? 'Bot' : match.opponent.displayName}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold tabular-nums">
+                        {match.yourGoals}-{match.oppGoals}
+                      </span>
+
+                      <span className={cn(
+                        'text-sm font-bold',
+                        match.netProfit > 0 ? 'text-primary' : match.netProfit < 0 ? 'text-red-500' : 'text-muted'
+                      )}>
+                        {match.netProfit > 0 ? '+' : ''}₦{match.netProfit}
+                      </span>
+
+                      <div
+                        className={cn(
+                          'w-6 h-6 flex items-center justify-center text-xs font-bold',
+                          match.resultTag === 'W'
+                            ? 'bg-primary-container text-on-primary'
+                            : match.resultTag === 'L'
+                            ? 'bg-surface border border-outline-variant text-muted'
+                            : 'bg-surface border border-outline text-muted'
+                        )}
+                      >
+                        {match.resultTag}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
     </PageLayout>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }
