@@ -1,275 +1,455 @@
-import { useEffect, useState, useMemo } from 'react';
-import type { GameState, PlayerNumber, GridPosition } from '../types';
+import { useState, useCallback, useRef, useMemo } from 'react';
+import type { GameState, PlayerSide, GridPosition, PlayerCap, Formation, AttackerAction, DefenderAction, GameMove } from '../types';
 import type { TeamColors } from '@/lib/team-colors';
+import { resolveCapName, formatAction } from '@/lib/game-utils';
+import { cn } from '@/lib/utils';
 
 interface PitchProps {
   gameState: GameState;
-  playerSide: PlayerNumber;
+  playerSide: PlayerSide;
   yourColors?: TeamColors;
   oppColors?: TeamColors;
   yourAbbr?: string;
   oppAbbr?: string;
+  onMoveSelect?: (move: GameMove) => void;
+  selectedMove?: GameMove | null;
+  disabled?: boolean;
 }
 
-// ─── 4-3-3 Formation Template ───────────────────────────────────────────────
-interface FormationSlot {
-  number: number;
-  role: string;
-  baseX: number;
-  baseY: number;
+const PITCH_COLS = 15;
+const PITCH_ROWS = 9;
+const CELL_W = 1500 / (PITCH_COLS - 1);
+const CELL_H = 900 / (PITCH_ROWS - 1);
+
+function gridToPercent(col: number, row: number): { x: number; y: number } {
+  return {
+    x: (col / (PITCH_COLS - 1)) * 100,
+    y: (row / (PITCH_ROWS - 1)) * 100,
+  };
 }
 
-const FORMATION_433: FormationSlot[] = [
-  { number: 1,  role: 'GK',  baseX: 5,   baseY: 50 },
-  { number: 2,  role: 'RB',  baseX: 22,  baseY: 15 },
-  { number: 4,  role: 'CB',  baseX: 18,  baseY: 37 },
-  { number: 5,  role: 'CB',  baseX: 18,  baseY: 63 },
-  { number: 3,  role: 'LB',  baseX: 22,  baseY: 85 },
-  { number: 6,  role: 'CDM', baseX: 38,  baseY: 50 },
-  { number: 8,  role: 'CM',  baseX: 45,  baseY: 28 },
-  { number: 10, role: 'CM',  baseX: 45,  baseY: 72 },
-  { number: 7,  role: 'RW',  baseX: 68,  baseY: 15 },
-  { number: 9,  role: 'ST',  baseX: 72,  baseY: 50 },
-  { number: 11, role: 'LW',  baseX: 68,  baseY: 85 },
-];
-
-interface RenderedPlayer {
-  number: number;
-  role: string;
-  x: number;
-  y: number;
-  isControlled: boolean;
-  hasBall: boolean;
+function percentToGrid(x: number, y: number): GridPosition {
+  return {
+    col: Math.round((x / 100) * (PITCH_COLS - 1)),
+    row: Math.round((y / 100) * (PITCH_ROWS - 1)),
+  };
 }
 
-function computeFormation(
-  template: FormationSlot[],
-  ballPos: GridPosition,
-  isAttacking: boolean,
-  controlledPos: GridPosition,
-  isAway: boolean,
-  tick: number,
-): RenderedPlayer[] {
-  const ballShiftX = ((ballPos.col - 5) / 5) * 12;
-  const ballShiftY = ((ballPos.row - 5) / 5) * 6;
-  const phaseShift = isAttacking ? 8 : -6;
-
-  return template.map((slot, i) => {
-    const isControlled = slot.number === 9;
-    const hasBall = isControlled && isAttacking;
-
-    let x: number;
-    let y: number;
-
-    if (isControlled) {
-      x = (controlledPos.col / 10) * 100;
-      y = (controlledPos.row / 9) * 100;
-    } else {
-      x = slot.baseX + ballShiftX + phaseShift;
-      y = slot.baseY + ballShiftY;
-
-      if (slot.role === 'GK') {
-        x = slot.baseX + ballShiftX * 0.15;
-        y = slot.baseY + ballShiftY * 0.2;
-      }
-
-      if (['CB', 'LB', 'RB'].includes(slot.role)) {
-        x = slot.baseX + ballShiftX * 0.35 + phaseShift * 0.4;
-        y = slot.baseY + ballShiftY * 0.4;
-      }
-
-      if (slot.role === 'CDM') {
-        x = slot.baseX + ballShiftX * 0.55 + phaseShift * 0.6;
-        y = slot.baseY + ballShiftY * 0.5;
-      }
+function getCapName(name: string, number: number): string {
+  if (name && name !== `GK ${number}` && name !== `DEF ${number}` && name !== `MID ${number}` && name !== `FWD ${number}`) {
+    const parts = name.split(' ');
+    if (parts.length > 1) {
+      return parts[parts.length - 1];
     }
-
-    const driftX = Math.sin(tick / 40 + i * 2.3) * 0.8;
-    const driftY = Math.cos(tick / 35 + i * 1.7) * 0.6;
-    x += driftX;
-    y += driftY;
-
-    x = Math.max(2, Math.min(98, x));
-    y = Math.max(4, Math.min(96, y));
-
-    if (isAway) {
-      x = 100 - x;
-    }
-
-    return { number: slot.number, role: slot.role, x, y, isControlled, hasBall };
-  });
+    return name.substring(0, 3).toUpperCase();
+  }
+  return String(number);
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+function determineAttackerAction(
+  fromCap: PlayerCap,
+  toPosition: GridPosition,
+  allCaps: PlayerCap[],
+  attackingSide: PlayerSide
+): AttackerAction {
+  const forward = attackingSide === 'home' ? 1 : -1;
+  const targetCap = allCaps.find((c) => c.position.col === toPosition.col && c.position.row === toPosition.row && c.id !== fromCap.id);
+
+  const distance = Math.sqrt(Math.pow(toPosition.col - fromCap.position.col, 2) + Math.pow(toPosition.row - fromCap.position.row, 2));
+  const forwardDistance = (toPosition.col - fromCap.position.col) * forward;
+
+  if (targetCap) {
+    if (forwardDistance > 2) {
+      return 'through_pass';
+    }
+    return 'pass';
+  }
+
+  if (distance > 8) {
+    return 'long_ball';
+  }
+
+  if (attackingSide === 'home' ? toPosition.col >= 12 : toPosition.col <= 2) {
+    return 'shoot';
+  }
+
+  return 'run';
+}
+
+function determineDefenderAction(
+  fromCap: PlayerCap,
+  toPosition: GridPosition,
+  ballPosition: GridPosition,
+  attackingSide: PlayerSide
+): DefenderAction {
+  const forward = attackingSide === 'home' ? 1 : -1;
+  const distanceToBall = Math.sqrt(Math.pow(toPosition.col - ballPosition.col, 2) + Math.pow(toPosition.row - ballPosition.row, 2));
+
+  if ((toPosition.col - fromCap.position.col) * forward < 0 && fromCap.role === 'def') {
+    return 'track_back';
+  }
+
+  if (distanceToBall <= 2) {
+    return 'press';
+  }
+
+  if ((toPosition.col - ballPosition.col) * forward > 0) {
+    return 'intercept';
+  }
+
+  return 'hold_shape';
+}
+
 export default function Pitch({
-  gameState, playerSide, yourColors, oppColors, yourAbbr, oppAbbr,
+  gameState,
+  playerSide,
+  yourColors,
+  oppColors,
+  yourAbbr = 'YOU',
+  oppAbbr = 'OPP',
+  onMoveSelect,
+  selectedMove,
+  disabled = false,
 }: PitchProps) {
-  const { ball, players, attackingPlayer } = gameState;
-  const [tick, setTick] = useState(0);
+  const { ball, formations, attackingSide } = gameState;
+  const [dragStart, setDragStart] = useState<{ capId: string; x: number; y: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  const yourPrimary = yourColors?.primary || '#FFFFFF';
-  const yourText = yourColors?.text || '#1a6b37';
-  const oppPrimary = oppColors?.primary || '#111111';
-  const oppText = oppColors?.text || '#FFFFFF';
+  const isAttacker = attackingSide === playerSide;
+  const yourFormation: Formation = playerSide === 'home' ? formations.home : formations.away;
+  const oppFormation: Formation = playerSide === 'home' ? formations.away : formations.home;
 
-  useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 66);
-    return () => clearInterval(interval);
-  }, []);
+  const yourCaps = yourFormation.caps;
+  const oppCaps = oppFormation.caps;
 
-  const isP1 = playerSide === 'p1';
-  const oppSide: PlayerNumber = isP1 ? 'p2' : 'p1';
+  const ballCarrier = [...yourCaps, ...oppCaps].find((c) => c.id === ball.carrierCapId);
+  const canInteract = !disabled;
 
-  const yourFormation = useMemo(() => {
-    const isAttacking = attackingPlayer === playerSide;
-    return computeFormation(
-      FORMATION_433, ball.position, isAttacking,
-      players[playerSide].position, !isP1, tick,
-    );
-  }, [ball.position, players, attackingPlayer, playerSide, isP1, tick]);
+  const yourPrimary = yourColors?.primary || '#2563eb';
+  const yourText = yourColors?.text || '#ffffff';
+  const oppPrimary = oppColors?.primary || '#dc2626';
+  const oppText = oppColors?.text || '#ffffff';
 
-  const oppFormation = useMemo(() => {
-    const isAttacking = attackingPlayer === oppSide;
-    return computeFormation(
-      FORMATION_433, ball.position, isAttacking,
-      players[oppSide].position, isP1, tick,
-    );
-  }, [ball.position, players, attackingPlayer, oppSide, isP1, tick]);
+  const snappedTarget = useMemo(() => {
+    if (!dragEnd) return null;
+    const grid = percentToGrid(dragEnd.x, dragEnd.y);
+    const percent = gridToPercent(grid.col, grid.row);
+    return { grid, percent };
+  }, [dragEnd]);
 
-  const carrierFormation = ball.carrier === playerSide ? yourFormation : oppFormation;
-  const carrierPlayer = carrierFormation.find((p) => p.isControlled);
-  const ballPercent = carrierPlayer
-    ? { x: carrierPlayer.x, y: carrierPlayer.y }
-    : { x: (ball.position.col / 10) * 100, y: (ball.position.row / 9) * 100 };
+  const moveBadgeText = useMemo(() => {
+    if (!selectedMove) return null;
+    const name = resolveCapName(selectedMove.fromCapId, gameState);
+    const action = formatAction(selectedMove.action);
+    return `${name}: ${action}`;
+  }, [selectedMove, gameState]);
+
+  const handlePointerDown = useCallback(
+    (capId: string, e: React.PointerEvent) => {
+      if (!canInteract || isDragging) return;
+
+      const cap = [...yourCaps, ...oppCaps].find((c) => c.id === capId);
+      if (!cap) return;
+
+      if (isAttacker) {
+        if (cap.id !== ball.carrierCapId) return;
+      } else {
+        if (cap.side !== playerSide) return;
+      }
+
+      const svg = svgRef.current;
+      if (!svg) return;
+
+      const rect = svg.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+      setDragStart({ capId, x, y });
+      setIsDragging(true);
+      (e.target as Element).setPointerCapture(e.pointerId);
+    },
+    [canInteract, isDragging, yourCaps, oppCaps, ball.carrierCapId, isAttacker, playerSide]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging || !dragStart) return;
+
+      const svg = svgRef.current;
+      if (!svg) return;
+
+      const rect = svg.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+      setDragEnd({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) });
+    },
+    [isDragging, dragStart]
+  );
+
+  const handlePointerUp = useCallback(
+    (_e: React.PointerEvent) => {
+      if (!isDragging || !dragStart || !dragEnd || !onMoveSelect) {
+        setDragStart(null);
+        setDragEnd(null);
+        setIsDragging(false);
+        return;
+      }
+
+      const fromCap = [...yourCaps, ...oppCaps].find((c) => c.id === dragStart.capId);
+      if (!fromCap) {
+        setDragStart(null);
+        setDragEnd(null);
+        setIsDragging(false);
+        return;
+      }
+
+      const toPosition = percentToGrid(dragEnd.x, dragEnd.y);
+
+      if (isAttacker) {
+        const action = determineAttackerAction(fromCap, toPosition, [...yourCaps, ...oppCaps], attackingSide);
+        const move: GameMove = {
+          side: 'attacker',
+          fromCapId: fromCap.id,
+          toPosition,
+          action,
+        };
+        onMoveSelect(move);
+      } else {
+        const action = determineDefenderAction(fromCap, toPosition, ball.position, attackingSide);
+        const move: GameMove = {
+          side: 'defender',
+          fromCapId: fromCap.id,
+          toPosition,
+          action,
+        };
+        onMoveSelect(move);
+      }
+
+      setDragStart(null);
+      setDragEnd(null);
+      setIsDragging(false);
+    },
+    [isDragging, dragStart, dragEnd, onMoveSelect, yourCaps, oppCaps, isAttacker, attackingSide, ball.position]
+  );
+
+  const ballPercent = ballCarrier ? gridToPercent(ballCarrier.position.col, ballCarrier.position.row) : gridToPercent(ball.position.col, ball.position.row);
 
   return (
     <div className="w-full h-full flex items-center justify-center select-none bg-[#14532d]">
       <div
         className="relative bg-[#1a6b37] pitch-stripes overflow-hidden w-full"
-        style={{ aspectRatio: '16 / 10', maxHeight: '100%' }}
+        style={{ aspectRatio: '15 / 9', maxHeight: '100%' }}
       >
-        {/* Pitch Markings */}
         <svg
+          ref={svgRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
-          viewBox="0 0 1000 625"
+          viewBox="0 0 1500 900"
           preserveAspectRatio="xMidYMid meet"
         >
-          <rect x="30" y="20" width="940" height="585" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <line x1="500" y1="20" x2="500" y2="605" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <circle cx="500" cy="312" r="70" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <circle cx="500" cy="312" r="3" fill="rgba(255,255,255,0.35)" />
-          <rect x="30" y="152" width="130" height="320" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <rect x="30" y="222" width="50" height="180" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <circle cx="120" cy="312" r="3" fill="rgba(255,255,255,0.35)" />
-          <path d="M 160 252 A 60 60 0 0 1 160 372" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <rect x="840" y="152" width="130" height="320" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <rect x="920" y="222" width="50" height="180" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <circle cx="880" cy="312" r="3" fill="rgba(255,255,255,0.35)" />
-          <path d="M 840 252 A 60 60 0 0 0 840 372" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <path d="M 30 30 A 10 10 0 0 0 40 20" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <path d="M 960 20 A 10 10 0 0 0 970 30" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <path d="M 30 595 A 10 10 0 0 1 40 605" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
-          <path d="M 960 605 A 10 10 0 0 1 970 595" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+          <defs>
+            <marker
+              id="dragArrow"
+              markerWidth="8"
+              markerHeight="8"
+              refX="6"
+              refY="4"
+              orient="auto"
+            >
+              <path
+                d="M 0 0 L 8 4 L 0 8 z"
+                fill={isAttacker ? 'rgba(255,215,0,0.9)' : 'rgba(255,100,100,0.9)'}
+              />
+            </marker>
+          </defs>
+
+          <rect x="25" y="25" width="1450" height="850" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <line x1="750" y1="25" x2="750" y2="875" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <circle cx="750" cy="450" r="90" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <circle cx="750" cy="450" r="5" fill="rgba(255,255,255,0.35)" />
+          <rect x="25" y="200" width="180" height="500" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <rect x="25" y="300" width="80" height="300" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <circle cx="100" cy="450" r="5" fill="rgba(255,255,255,0.35)" />
+          <rect x="1295" y="200" width="180" height="500" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <rect x="1395" y="300" width="80" height="300" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <circle cx="1400" cy="450" r="5" fill="rgba(255,255,255,0.35)" />
+
+          {dragStart && dragEnd && snappedTarget && (
+            <>
+              {/* Highlighted destination cell */}
+              <rect
+                x={snappedTarget.percent.x / 100 * 1500 - CELL_W / 2}
+                y={snappedTarget.percent.y / 100 * 900 - CELL_H / 2}
+                width={CELL_W}
+                height={CELL_H}
+                fill={isAttacker ? 'rgba(255,215,0,0.15)' : 'rgba(255,100,100,0.15)'}
+                stroke={isAttacker ? 'rgba(255,215,0,0.4)' : 'rgba(255,100,100,0.4)'}
+                strokeWidth="2"
+                rx="4"
+              />
+              {/* Direction arrow */}
+              <line
+                x1={(dragStart.x / 100) * 1500}
+                y1={(dragStart.y / 100) * 900}
+                x2={snappedTarget.percent.x / 100 * 1500}
+                y2={snappedTarget.percent.y / 100 * 900}
+                stroke={isAttacker ? 'rgba(255,215,0,0.8)' : 'rgba(255,100,100,0.8)'}
+                strokeWidth="4"
+                markerEnd="url(#dragArrow)"
+              />
+              {/* Ghost cap at destination */}
+              <circle
+                cx={snappedTarget.percent.x / 100 * 1500}
+                cy={snappedTarget.percent.y / 100 * 900}
+                r="22"
+                fill="none"
+                stroke={isAttacker ? 'rgba(255,215,0,0.6)' : 'rgba(255,100,100,0.6)'}
+                strokeWidth="3"
+                strokeDasharray="6,4"
+              />
+            </>
+          )}
         </svg>
 
-        {/* Team labels at each end */}
-        <div className="absolute left-[3%] top-1/2 -translate-y-1/2 z-[5]">
-          <div
-            className="px-2 py-1 rounded-sm text-[9px] md:text-[10px] font-black tracking-[0.15em]"
-            style={{
-              backgroundColor: isP1 ? `${oppPrimary}CC` : `${yourPrimary}CC`,
-              color: isP1 ? oppText : yourText,
-            }}
-          >
-            {isP1 ? oppAbbr || 'OPP' : yourAbbr || 'YOU'}
+        {/* Selected move badge */}
+        {moveBadgeText && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-black/70 px-3 py-1.5 rounded-full">
+            <span className="text-[10px] md:text-[11px] font-bold text-white uppercase tracking-wider">
+              {moveBadgeText}
+            </span>
           </div>
-        </div>
-        <div className="absolute right-[3%] top-1/2 -translate-y-1/2 z-[5]">
-          <div
-            className="px-2 py-1 rounded-sm text-[9px] md:text-[10px] font-black tracking-[0.15em]"
-            style={{
-              backgroundColor: isP1 ? `${yourPrimary}CC` : `${oppPrimary}CC`,
-              color: isP1 ? yourText : oppText,
-            }}
-          >
-            {isP1 ? yourAbbr || 'YOU' : oppAbbr || 'OPP'}
-          </div>
-        </div>
+        )}
 
-        {/* Your Team */}
-        {yourFormation.map((player) => (
-          <div
-            key={`your-${player.number}`}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: `${player.x}%`,
-              top: `${player.y}%`,
-              transition: 'left 600ms cubic-bezier(.4,0,.2,1), top 600ms cubic-bezier(.4,0,.2,1)',
-              willChange: 'left, top',
-              zIndex: player.isControlled ? 20 : 10,
-            }}
-          >
+        {/* Your team caps */}
+        {yourCaps.map((cap) => {
+          const pos = gridToPercent(cap.position.col, cap.position.row);
+          const isBallCarrier = cap.id === ball.carrierCapId;
+          const isSelected = selectedMove?.fromCapId === cap.id;
+          const isDraggable = canInteract && (isAttacker ? isBallCarrier : true);
+
+          return (
             <div
-              className="rounded-full flex items-center justify-center font-bold transition-all duration-300 text-[10px] md:text-xs"
+              key={cap.id}
+              className={cn(
+                'absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300',
+                isDraggable && 'cursor-grab active:cursor-grabbing',
+                !isDraggable && !isBallCarrier && 'opacity-60'
+              )}
               style={{
-                width: player.isControlled ? '2.75rem' : '1.75rem',
-                height: player.isControlled ? '2.75rem' : '1.75rem',
-                backgroundColor: player.role === 'GK' ? '#f59e0b' : yourPrimary,
-                color: player.role === 'GK' ? '#000' : yourText,
-                boxShadow: player.isControlled ? `0 0 14px ${yourPrimary}88` : 'none',
-                border: player.isControlled ? '2px solid rgba(255,255,255,0.5)' : 'none',
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                zIndex: isBallCarrier ? 30 : 15,
               }}
+              onPointerDown={(e) => isDraggable && handlePointerDown(cap.id, e)}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
             >
-              {player.number}
-            </div>
-            {player.hasBall && (
-              <div className="absolute left-1/2 -translate-x-1/2 -top-5 whitespace-nowrap">
-                <span className="text-[8px] md:text-[9px] font-black text-white/80 tracking-[0.15em] bg-white/10 px-1.5 py-0.5 rounded-sm">
-                  BALL
-                </span>
+              <div
+                className={cn(
+                  'rounded-full flex flex-col items-center justify-center font-bold transition-all duration-300',
+                  isSelected && 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-black',
+                  isBallCarrier && 'ring-2 ring-yellow-400',
+                  isDraggable && !isSelected && !isBallCarrier && 'ring-1 ring-white/30 animate-pulse'
+                )}
+                style={{
+                  width: isBallCarrier ? '3rem' : '2.25rem',
+                  height: isBallCarrier ? '3rem' : '2.25rem',
+                  backgroundColor: cap.role === 'gk' ? (yourColors?.secondary || '#f59e0b') : yourPrimary,
+                  color: yourText,
+                  boxShadow: isBallCarrier ? `0 0 20px ${yourPrimary}cc` : 'none',
+                }}
+              >
+                <span className="text-[10px] md:text-[11px]">{getCapName(cap.name, cap.shirtNumber)}</span>
+                {cap.role !== 'gk' && (
+                  <span className="text-[8px] md:text-[9px] opacity-70">{cap.shirtNumber}</span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
 
-        {/* Opponent Team */}
-        {oppFormation.map((player) => (
-          <div
-            key={`opp-${player.number}`}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2"
-            style={{
-              left: `${player.x}%`,
-              top: `${player.y}%`,
-              transition: 'left 600ms cubic-bezier(.4,0,.2,1), top 600ms cubic-bezier(.4,0,.2,1)',
-              willChange: 'left, top',
-              zIndex: player.isControlled ? 20 : 10,
-            }}
-          >
+        {/* Opponent caps */}
+        {oppCaps.map((cap) => {
+          const pos = gridToPercent(cap.position.col, cap.position.row);
+          const isBallCarrier = cap.id === ball.carrierCapId;
+
+          return (
             <div
-              className="rounded-full flex items-center justify-center font-bold transition-all duration-300 text-[10px] md:text-xs"
+              key={cap.id}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 opacity-80"
               style={{
-                width: player.isControlled ? '2.75rem' : '1.75rem',
-                height: player.isControlled ? '2.75rem' : '1.75rem',
-                backgroundColor: player.role === 'GK' ? '#ea580c' : oppPrimary,
-                color: player.role === 'GK' ? '#fff' : oppText,
-                border: player.isControlled ? '2px solid rgba(255,255,255,0.2)' : 'none',
+                left: `${pos.x}%`,
+                top: `${pos.y}%`,
+                zIndex: isBallCarrier ? 30 : 15,
               }}
             >
-              {player.number}
+              <div
+                className={cn(
+                  'rounded-full flex flex-col items-center justify-center font-bold transition-all duration-300',
+                  isBallCarrier && 'ring-2 ring-yellow-400'
+                )}
+                style={{
+                  width: isBallCarrier ? '3rem' : '2.25rem',
+                  height: isBallCarrier ? '3rem' : '2.25rem',
+                  backgroundColor: cap.role === 'gk' ? (oppColors?.secondary || '#f59e0b') : oppPrimary,
+                  color: oppText,
+                  boxShadow: isBallCarrier ? `0 0 20px ${oppPrimary}cc` : 'none',
+                }}
+              >
+                <span className="text-[10px] md:text-[11px]">{getCapName(cap.name, cap.shirtNumber)}</span>
+                {cap.role !== 'gk' && (
+                  <span className="text-[8px] md:text-[9px] opacity-70">{cap.shirtNumber}</span>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Ball */}
         <div
-          className="absolute w-3 h-3 md:w-3.5 md:h-3.5 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.7)] transform -translate-x-1/2 -translate-y-1/2 z-30"
+          className="absolute w-3.5 h-3.5 md:w-4 md:h-4 bg-white rounded-full shadow-[0_0_12px_rgba(255,255,255,0.8)] transform -translate-x-1/2 -translate-y-1/2 z-40"
           style={{
             left: `${ballPercent.x}%`,
             top: `${ballPercent.y}%`,
             transition: 'left 500ms cubic-bezier(.4,0,.2,1), top 500ms cubic-bezier(.4,0,.2,1)',
-            willChange: 'left, top',
           }}
         />
+
+        {/* Corner labels */}
+        <div className="absolute left-2 top-2 md:top-3 z-10 flex flex-col items-start gap-0.5">
+          <div
+            className="px-2 py-1 rounded-sm text-[9px] md:text-[10px] font-black tracking-[0.15em]"
+            style={{
+              backgroundColor: playerSide === 'home' ? `${yourPrimary}CC` : `${oppPrimary}CC`,
+              color: playerSide === 'home' ? yourText : oppText,
+            }}
+          >
+            {playerSide === 'home' ? yourAbbr : oppAbbr}
+          </div>
+          <span className="text-[7px] md:text-[8px] font-bold text-white/60 tracking-wider pl-0.5">
+            {playerSide === 'home'
+              ? (isAttacker ? 'ATK' : 'DEF')
+              : ''}
+          </span>
+        </div>
+        <div className="absolute right-2 top-2 md:top-3 z-10 flex flex-col items-end gap-0.5">
+          <div
+            className="px-2 py-1 rounded-sm text-[9px] md:text-[10px] font-black tracking-[0.15em]"
+            style={{
+              backgroundColor: playerSide === 'away' ? `${yourPrimary}CC` : `${oppPrimary}CC`,
+              color: playerSide === 'away' ? yourText : oppText,
+            }}
+          >
+            {playerSide === 'away' ? yourAbbr : oppAbbr}
+          </div>
+          <span className="text-[7px] md:text-[8px] font-bold text-white/60 tracking-wider pr-0.5">
+            {playerSide === 'away'
+              ? (isAttacker ? 'ATK' : 'DEF')
+              : ''}
+          </span>
+        </div>
       </div>
     </div>
   );

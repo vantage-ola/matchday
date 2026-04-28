@@ -1,37 +1,69 @@
-export type Move =
-  | 'pass'
-  | 'long_ball'
-  | 'run'
-  | 'press'
-  | 'tackle'
-  | 'hold_shape'
-  | 'shoot'
-  | 'sprint';
+export type AttackerAction = 'pass' | 'through_pass' | 'cross' | 'long_ball' | 'shoot' | 'run';
+export type DefenderAction = 'press' | 'tackle' | 'intercept' | 'hold_shape' | 'track_back';
 
+export type CapRole = 'gk' | 'def' | 'mid' | 'fwd';
 export type PlayerSide = 'home' | 'away';
 export type PlayerNumber = 'p1' | 'p2';
 
 export type GameMode = 'matchup_only' | 'real_match';
 export type SessionStatus = 'pending' | 'active' | 'completed' | 'settled' | 'abandoned';
-export type TurnStatus = 'waiting_both' | 'waiting_p1' | 'waiting_p2' | 'resolving';
+export type TurnStatus = 'waiting_both' | 'waiting_home' | 'waiting_away' | 'resolving';
 export type Outcome =
   | 'advance'
   | 'intercept'
   | 'tackle'
   | 'goal'
   | 'save'
-  | 'miss';
+  | 'miss'
+  | 'through'
+  | 'press_won'
+  | 'blocked'
+  | 'wide';
 
 export interface GridPosition {
   col: number;
   row: number;
 }
 
-export interface PlayerState {
-  movesRemaining: number;
-  movesUsed: Move[];
+export interface PlayerCap {
+  id: string;
+  name: string;
+  shirtNumber: number;
+  role: CapRole;
+  side: PlayerSide;
   position: GridPosition;
-  possession: boolean;
+  rating: number;
+  hasBall: boolean;
+}
+
+export interface Formation {
+  side: PlayerSide;
+  shape: string;
+  caps: PlayerCap[];
+}
+
+export interface AttackerMove {
+  side: 'attacker';
+  fromCapId: string;
+  toCapId?: string;
+  toPosition: GridPosition;
+  action: AttackerAction;
+}
+
+export interface DefenderMove {
+  side: 'defender';
+  fromCapId: string;
+  toPosition: GridPosition;
+  action: DefenderAction;
+  targetCapId?: string;
+}
+
+export type GameMove = AttackerMove | DefenderMove;
+
+export interface CapMovement {
+  capId: string;
+  fromPosition: GridPosition;
+  toPosition: GridPosition;
 }
 
 export interface MatchupStats {
@@ -42,19 +74,24 @@ export interface MatchupStats {
 }
 
 export interface MatchEvent {
-  type: 'goal' | 'tackle' | 'assist' | 'possession_change';
-  player: PlayerNumber;
+  type: 'goal' | 'tackle' | 'assist' | 'possession_change' | 'save' | 'shot' | 'interception';
+  side: PlayerSide;
+  capId?: string;
   turn: number;
   phase: number;
 }
 
-export interface Resolution {
-  p1Move: Move;
-  p2Move: Move;
+export interface SpatialResolution {
+  attackerMove: AttackerMove;
+  defenderMove: DefenderMove;
   outcome: Outcome;
+  ballFinalPosition: GridPosition;
+  interceptionPoint: GridPosition | null;
+  movedCaps: CapMovement[];
   possessionChange: boolean;
   goalScored: boolean;
-  scorer?: PlayerNumber;
+  scorerCapId: string | null;
+  ratingBonus: number;
 }
 
 export interface GameState {
@@ -63,26 +100,26 @@ export interface GameState {
   totalPhases: number;
   turn: number;
   movesPerPhase: number;
-  attackingPlayer: PlayerNumber;
+  attackingSide: PlayerSide;
+
   ball: {
     position: GridPosition;
-    carrier: PlayerNumber | null;
+    carrierCapId: string | null;
   };
-  players: {
-    p1: PlayerState;
-    p2: PlayerState;
+
+  formations: {
+    home: Formation;
+    away: Formation;
   };
+
   turnStatus: TurnStatus;
-  score: {
-    p1: number;
-    p2: number;
-  };
+  score: { home: number; away: number };
   stats: {
-    p1: MatchupStats;
-    p2: MatchupStats;
+    home: MatchupStats;
+    away: MatchupStats;
   };
   events: MatchEvent[];
-  lastResolution: Resolution | null;
+  lastResolution: SpatialResolution | null;
 }
 
 export interface MatchupResult {
@@ -118,40 +155,8 @@ export interface Settlement {
   createdAt: Date;
 }
 
-export interface MoveSelectorProps {
-  selectedMove: Move | null;
-  onSelect: (move: Move) => void;
-  disabled?: boolean;
-  playerState: PlayerState;
-}
-
-export interface ScoreBarProps {
-  gameState: GameState;
-  playerSide: PlayerNumber;
-  homeTeam: string;
-  awayTeam: string;
-}
-
-export interface PitchProps {
-  gameState: GameState;
-  playerSide: PlayerNumber;
-}
-
-export interface ResolutionOverlayProps {
-  resolution: Resolution;
-  playerSide: 'p1' | 'p2';
-  onComplete: () => void;
-}
-
-export interface SettlementCardProps {
-  result: MatchupResult | null;
-  settlement: {
-    player1MatchupScore: number;
-    player2MatchupScore: number;
-    player1CombinedScore: number;
-    player2CombinedScore: number;
-    player1Payout: number;
-    player2Payout: number;
-  };
-  playerSide: 'p1' | 'p2';
+export interface TeamColors {
+  primary: string;
+  secondary: string;
+  text: string;
 }

@@ -1,5 +1,6 @@
 import type { MatchupResult } from '../types';
 import { cn } from '@/lib/utils';
+import { CheckCircle2, XCircle } from 'lucide-react';
 
 interface SettlementCardProps {
   result: MatchupResult | null;
@@ -86,13 +87,13 @@ export default function SettlementCard({
 
         {iWon ? (
           <div className="flex items-center gap-2 text-primary">
-            <span className="material-symbols-outlined">check_circle</span>
-            <span className="text-label font-bold">YOU WON THE MATCHUP</span>
+            <CheckCircle2 className="w-5 h-5 text-primary-container" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-primary-container">YOU WON THE MATCHUP</span>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-muted">
-            <span className="material-symbols-outlined">cancel</span>
-            <span className="text-label">YOU LOST THE MATCHUP</span>
+            <XCircle className="w-5 h-5" />
+            <span className="text-[11px] font-bold uppercase tracking-wider">YOU LOST THE MATCHUP</span>
           </div>
         )}
 

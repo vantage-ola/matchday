@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PageLayout } from '@/components/layouts';
@@ -48,15 +48,22 @@ export default function Home() {
     navigate(`/fixture/${fixtureId}`);
   };
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fixturesByDate = useMemo(() => {
+    const groups: Record<string, Fixture[]> = {};
+    for (const fixture of fixtures) {
+      const dateKey = new Date(fixture.kickoffAt).toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      });
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(fixture);
+    }
+    return Object.entries(groups);
+  }, [fixtures]);
 
   return (
     <PageLayout title="FIXTURES" balance={user?.walletBalance ?? 0}>
-      <div className="mb-6">
-        <span className="text-label text-muted">{dateStr.toUpperCase()}</span>
-      </div>
-
       {loading ? (
         <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -78,7 +85,7 @@ export default function Home() {
       ) : fixtures.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 text-center">
           <p className="text-muted mb-4">No upcoming fixtures</p>
-          <button
+          <button 
             onClick={fetchFixtures}
             className="text-primary font-semibold hover:underline"
           >
@@ -86,13 +93,22 @@ export default function Home() {
           </button>
         </div>
       ) : (
-        <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
-          {fixtures.map((fixture) => (
-            <FixtureCard
-              key={fixture.id}
-              fixture={fixture}
-              onJoin={() => handleJoin(fixture.id)}
-            />
+        <div className="flex flex-col gap-8">
+          {fixturesByDate.map(([dateLabel, dateFixtures]) => (
+            <section key={dateLabel}>
+              <div className="mb-4">
+                <span className="text-label text-muted">{dateLabel.toUpperCase()}</span>
+              </div>
+              <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-max">
+                {dateFixtures.map((fixture) => (
+                  <FixtureCard
+                    key={fixture.id}
+                    fixture={fixture}
+                    onJoin={() => handleJoin(fixture.id)}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}

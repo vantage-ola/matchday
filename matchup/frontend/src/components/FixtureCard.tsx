@@ -1,9 +1,5 @@
 import { getTeamColors, getTeamAbbr } from '@/lib/team-colors';
-
-interface TeamInfo {
-  name: string;
-  logo?: string;
-}
+import { Button } from '@/components/ui/button';
 
 interface Fixture {
   id: string;
@@ -30,7 +26,7 @@ interface FixtureCardProps {
 export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
   const isLive = fixture.status === 'live';
   const kickoffTime = new Date(fixture.kickoffAt);
-  const timeStr = kickoffTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = kickoffTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
 
   const homeColors = getTeamColors(fixture.homeTeam);
   const awayColors = getTeamColors(fixture.awayTeam);
@@ -44,14 +40,14 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
       )}
 
       <div className="p-4 border-b border-outline-variant/20 flex justify-between items-center bg-surface-container-high">
-        <span className="text-label text-primary font-bold">{fixture.league}</span>
+        <span className="text-[10px] uppercase tracking-wider font-bold text-primary">{fixture.league}</span>
         {isLive ? (
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-tertiary-fixed animate-pulse" />
-            <span className="text-label text-tertiary-fixed font-bold">{fixture.minute}'</span>
+            <span className="text-[10px] uppercase tracking-wider text-tertiary-fixed font-bold">{fixture.minute}'</span>
           </div>
         ) : (
-          <span className="text-label text-muted">{timeStr}</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted">{timeStr}</span>
         )}
       </div>
 
@@ -65,22 +61,22 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
             />
           ) : (
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm"
+              className="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center font-bold text-lg"
               style={{ backgroundColor: homeColors.primary, color: homeColors.text }}
             >
               {homeAbbr}
             </div>
           )}
-          <span className="text-title text-center">{fixture.homeTeam}</span>
+          <span className="font-bold text-sm text-center">{fixture.homeTeam}</span>
         </div>
 
         <div className="flex flex-col items-center justify-center w-1/3">
           {isLive ? (
-            <span className="text-display text-primary">
+            <span className="text-3xl font-black tracking-tight text-primary">
               {fixture.homeScore}-{fixture.awayScore}
             </span>
           ) : (
-            <span className="text-display text-foreground">VS</span>
+            <span className="text-3xl font-black tracking-tight text-foreground">VS</span>
           )}
         </div>
 
@@ -93,30 +89,34 @@ export function FixtureCard({ fixture, onJoin }: FixtureCardProps) {
             />
           ) : (
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm"
+              className="w-12 h-12 rounded-full bg-surface-container-highest border border-outline-variant/30 flex items-center justify-center font-bold text-lg"
               style={{ backgroundColor: awayColors.primary, color: awayColors.text }}
             >
               {awayAbbr}
             </div>
           )}
-          <span className="text-title text-center">{fixture.awayTeam}</span>
+          <span className="font-bold text-sm text-center">{fixture.awayTeam}</span>
         </div>
       </div>
 
       <div className="p-4 border-t border-outline-variant/20 flex justify-between items-center bg-surface-container">
-        {fixture.venue && (
-          <span className="text-label-xs text-muted">{fixture.venue}</span>
+        {fixture.venue ? (
+          <span className="text-[10px] uppercase tracking-wider text-muted">{fixture.venue}</span>
+        ) : (
+          <span className="text-[10px] uppercase tracking-wider text-muted">TBA</span>
         )}
         {onJoin && fixture.status === 'scheduled' && (
-          <button
+          <Button
             onClick={onJoin}
-            className="text-label bg-primary-container text-on-primary px-3 py-1.5 hover:bg-primary-container/90 transition-colors"
+            variant="primary"
+            size="sm"
+            className="text-[10px] uppercase tracking-wider rounded-sm h-8"
           >
             JOIN
-          </button>
+          </Button>
         )}
         {isLive && (
-          <span className="text-label text-tertiary-fixed font-bold">IN PROGRESS</span>
+          <span className="text-[10px] uppercase tracking-wider text-tertiary-fixed font-bold">IN PROGRESS</span>
         )}
       </div>
     </article>

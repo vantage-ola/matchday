@@ -108,33 +108,34 @@ export async function runSettlements(): Promise<void> {
     });
     if (existingSettlement) continue;
 
-    if (session.fixture.real_home_goals === null && session.fixture.real_away_goals === null) {
+    if (session.fixture.real_home_goals === null || session.fixture.real_away_goals === null) {
       continue;
     }
 
     const homeGoals = session.fixture.real_home_goals ?? 0;
     const awayGoals = session.fixture.real_away_goals ?? 0;
-
-    if (homeGoals === null || awayGoals === null) {
-      continue;
-    }
-
     const matchupScores = calculateMatchupScore(
       session.result?.player1_goals ?? 0,
       session.result?.player2_goals ?? 0
     );
+
+    const homeSide = session.player1_side;
+    const awaySide = session.player2_side;
+
+    const player1MatchupScore = homeSide === 'home' ? matchupScores.home : matchupScores.away;
+    const player2MatchupScore = awaySide === 'home' ? matchupScores.home : matchupScores.away;
 
     const actualResult = {
       home: homeGoals,
       away: awayGoals,
     };
 
-    const predictedHome = session.player1_side === 'home'
+    const predictedHome = homeSide === 'home'
       ? session.result?.player1_goals ?? 0
       : session.result?.player2_goals ?? 0;
-    const predictedAway = session.player1_side === 'home'
-      ? session.result?.player2_goals ?? 0
-      : session.result?.player1_goals ?? 0;
+    const predictedAway = awaySide === 'home'
+      ? session.result?.player1_goals ?? 0
+      : session.result?.player2_goals ?? 0;
 
     const predicted = {
       home: predictedHome,
@@ -146,21 +147,21 @@ export async function runSettlements(): Promise<void> {
 
     const isRealMatchMode = session.game_mode === 'real_match';
     const p1Combined = isRealMatchMode 
-      ? matchupScores.p1 * 0.6 + p1AccuracyScore * 0.4 
-      : matchupScores.p1;
+      ? player1MatchupScore * 0.6 + p1AccuracyScore * 0.4 
+      : player1MatchupScore;
     const p2Combined = isRealMatchMode 
-      ? matchupScores.p2 * 0.6 + p2AccuracyScore * 0.4 
-      : matchupScores.p2;
+      ? player2MatchupScore * 0.6 + p2AccuracyScore * 0.4 
+      : player2MatchupScore;
     const totalCombined = p1Combined + p2Combined;
     const pot = session.pot * 0.9;
-    const p1Payout = Math.round((p1Combined / totalCombined) * pot);
-    const p2Payout = Math.round((p2Combined / totalCombined) * pot);
+    const p1Payout = totalCombined > 0 ? Math.round((p1Combined / totalCombined) * pot) : 0;
+    const p2Payout = totalCombined > 0 ? Math.round((p2Combined / totalCombined) * pot) : 0;
 
     await prisma.settlement.create({
       data: {
         session_id: session.id,
-        player1_matchup_score: matchupScores.p1,
-        player2_matchup_score: matchupScores.p2,
+        player1_matchup_score: player1MatchupScore,
+        player2_matchup_score: player2MatchupScore,
         player1_accuracy_score: isRealMatchMode ? p1AccuracyScore : 0,
         player2_accuracy_score: isRealMatchMode ? p2AccuracyScore : 0,
         player1_combined_score: Math.round(p1Combined),
@@ -177,7 +178,7 @@ export async function runSettlements(): Promise<void> {
       data: { status: 'settled' },
     });
 
-    if (session.player1_id) {
+    if (session.player1_id && p1Payout > 0) {
       await prisma.user.update({
         where: { id: session.player1_id },
         data: {
@@ -188,7 +189,7 @@ export async function runSettlements(): Promise<void> {
       });
     }
 
-    if (session.player2_id) {
+    if (session.player2_id && p2Payout > 0) {
       await prisma.user.update({
         where: { id: session.player2_id },
         data: {

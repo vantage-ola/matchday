@@ -1,12 +1,52 @@
-export type Move =
-  | 'pass'
-  | 'long_ball'
-  | 'run'
-  | 'press'
-  | 'tackle'
-  | 'hold_shape'
-  | 'shoot'
-  | 'sprint';
+export const PITCH_COLS = 15;
+export const PITCH_ROWS = 9;
+
+export type CapRole = 'gk' | 'def' | 'mid' | 'fwd';
+export type CapSide = 'home' | 'away';
+
+export type AttackerAction = 'pass' | 'through_pass' | 'cross' | 'long_ball' | 'shoot' | 'run';
+export type DefenderAction = 'press' | 'tackle' | 'intercept' | 'hold_shape' | 'track_back';
+
+export interface GridPosition {
+  col: number;
+  row: number;
+}
+
+export interface PlayerCap {
+  id: string;
+  name: string;
+  shirtNumber: number;
+  role: CapRole;
+  side: CapSide;
+  position: GridPosition;
+  hasBall: boolean;
+  rating: number;
+  apiId?: number;
+}
+
+export interface Formation {
+  side: CapSide;
+  shape: string;
+  caps: PlayerCap[];
+}
+
+export interface AttackerMove {
+  side: 'attacker';
+  fromCapId: string;
+  toCapId?: string;
+  toPosition: GridPosition;
+  action: AttackerAction;
+}
+
+export interface DefenderMove {
+  side: 'defender';
+  fromCapId: string;
+  toPosition: GridPosition;
+  action: DefenderAction;
+  targetCapId?: string;
+}
+
+export type GameMove = AttackerMove | DefenderMove;
 
 export type PlayerSide = 'home' | 'away';
 export type PlayerNumber = 'p1' | 'p2';
@@ -16,25 +56,24 @@ export type SessionStatus = 'pending' | 'active' | 'completed' | 'settled' | 'ab
 export type LobbyStatus = 'open' | 'closed';
 export type FixtureStatus = 'scheduled' | 'live' | 'finished';
 export type SettlementStatus = 'pending' | 'complete';
-export type TurnStatus = 'waiting_both' | 'waiting_p1' | 'waiting_p2' | 'resolving';
+export type TurnStatus = 'waiting_both' | 'waiting_home' | 'waiting_away' | 'resolving';
+
 export type Outcome =
   | 'advance'
   | 'intercept'
   | 'tackle'
   | 'goal'
   | 'save'
-  | 'miss';
+  | 'miss'
+  | 'through'
+  | 'press_won'
+  | 'blocked'
+  | 'wide';
 
-export interface GridPosition {
-  col: number;
-  row: number;
-}
-
-export interface PlayerState {
-  movesRemaining: number;
-  movesUsed: Move[];
-  position: GridPosition;
-  possession: boolean;
+export interface CapMovement {
+  capId: string;
+  fromPosition: GridPosition;
+  toPosition: GridPosition;
 }
 
 export interface MatchupStats {
@@ -45,19 +84,24 @@ export interface MatchupStats {
 }
 
 export interface MatchEvent {
-  type: 'goal' | 'tackle' | 'assist' | 'possession_change';
-  player: PlayerNumber;
+  type: 'goal' | 'tackle' | 'assist' | 'possession_change' | 'save' | 'shot' | 'interception';
+  side: CapSide;
+  capId?: string;
   turn: number;
   phase: number;
 }
 
-export interface Resolution {
-  p1Move: Move;
-  p2Move: Move;
+export interface SpatialResolution {
+  attackerMove: AttackerMove;
+  defenderMove: DefenderMove;
   outcome: Outcome;
+  ballFinalPosition: GridPosition;
+  interceptionPoint: GridPosition | null;
+  movedCaps: CapMovement[];
   possessionChange: boolean;
   goalScored: boolean;
-  scorer?: PlayerNumber;
+  scorerCapId: string | null;
+  ratingBonus: number;
 }
 
 export interface GameState {
@@ -66,34 +110,36 @@ export interface GameState {
   totalPhases: number;
   turn: number;
   movesPerPhase: number;
-  attackingPlayer: PlayerNumber;
+  attackingSide: CapSide;
+
   ball: {
     position: GridPosition;
-    carrier: PlayerNumber | null;
+    carrierCapId: string | null;
   };
-  players: {
-    p1: PlayerState;
-    p2: PlayerState;
+
+  formations: {
+    home: Formation;
+    away: Formation;
   };
+
   turnStatus: TurnStatus;
-  score: {
-    p1: number;
-    p2: number;
-  };
+  score: { home: number; away: number };
   stats: {
-    p1: MatchupStats;
-    p2: MatchupStats;
+    home: MatchupStats;
+    away: MatchupStats;
   };
   events: MatchEvent[];
-  lastResolution: Resolution | null;
+  lastResolution: SpatialResolution | null;
 }
 
 export interface User {
   id: string;
   username: string;
+  passwordHash: string;
   displayName: string;
   avatarUrl: string | null;
   walletBalance: number;
+  isBot: boolean;
   createdAt: Date;
 }
 
@@ -119,6 +165,8 @@ export interface Fixture {
   createdAt: Date;
   homeTeamColors?: TeamColors;
   awayTeamColors?: TeamColors;
+  homeTeamApiId?: number;
+  awayTeamApiId?: number;
 }
 
 export interface Lobby {
@@ -189,3 +237,6 @@ export interface WSEvent {
   type: string;
   payload: unknown;
 }
+
+export const VALID_ATTACKER_ACTIONS: AttackerAction[] = ['pass', 'through_pass', 'cross', 'long_ball', 'shoot', 'run'];
+export const VALID_DEFENDER_ACTIONS: DefenderAction[] = ['press', 'tackle', 'intercept', 'hold_shape', 'track_back'];

@@ -1,5 +1,6 @@
 import type { Fixture } from '../types/index.js';
 import { prisma } from '../db/prisma.js';
+import { redis } from '../db/redis.js';
 
 const BASE_URL = 'https://api.football-data.org/v4';
 
@@ -38,6 +39,7 @@ export interface TeamPlayer {
   dateOfBirth: string;
   nationality: string;
   shirtNumber: number;
+  marketValue: number | null;
 }
 
 export interface TeamColors {
@@ -345,4 +347,323 @@ function mapStatus(apiStatus: string): 'scheduled' | 'live' | 'finished' {
     default:
       return 'scheduled';
   }
+}
+
+const SQUAD_CACHE_TTL = 60 * 60 * 24; // 24h in seconds
+const TEAM_CACHE_TTL = 60 * 60 * 24; // 24h in seconds
+
+async function fetchTeamCached(teamId: number): Promise<TeamDetails | null> {
+  const cacheKey = `team:${teamId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as TeamDetails;
+  }
+
+  const team = await fetchTeam(teamId);
+  if (team) {
+    await redis.setex(cacheKey, TEAM_CACHE_TTL, JSON.stringify(team));
+  }
+  return team;
+}
+
+const TEAM_NAME_TO_API_ID: Record<string, number> = {
+  'Arsenal FC': 57, 'Arsenal': 57,
+  'Aston Villa FC': 58, 'Aston Villa': 58,
+  'AFC Bournemouth': 1044, 'Bournemouth': 1044,
+  'Brentford FC': 402, 'Brentford': 402,
+  'Brighton & Hove Albion FC': 397, 'Brighton': 397,
+  'Chelsea FC': 61, 'Chelsea': 61,
+  'Crystal Palace FC': 354, 'Crystal Palace': 354,
+  'Everton FC': 62, 'Everton': 62,
+  'Fulham FC': 63, 'Fulham': 63,
+  'Ipswich Town FC': 349, 'Ipswich Town': 349,
+  'Leicester City FC': 338, 'Leicester City': 338,
+  'Liverpool FC': 64, 'Liverpool': 64,
+  'Manchester City FC': 65, 'Manchester City': 65,
+  'Manchester United FC': 66, 'Manchester United': 66,
+  'Newcastle United FC': 67, 'Newcastle United': 67,
+  'Nottingham Forest FC': 351, 'Nottingham Forest': 351,
+  'Southampton FC': 340, 'Southampton': 340,
+  'Tottenham Hotspur FC': 73, 'Tottenham Hotspur': 73,
+  'West Ham United FC': 563, 'West Ham United': 563,
+  'Wolverhampton Wanderers FC': 76, 'Wolverhampton Wanderers': 76,
+  'FC Barcelona': 81, 'Barcelona': 81,
+  'Real Madrid CF': 86, 'Real Madrid': 86,
+  'Club Atlético de Madrid': 78, 'Atletico Madrid': 78,
+  'FC Bayern München': 5, 'Bayern Munich': 5,
+  'Borussia Dortmund': 4,
+  'AC Milan': 98,
+  'FC Internazionale Milano': 108, 'Inter Milan': 108,
+  'Juventus FC': 109, 'Juventus': 109,
+  'SSC Napoli': 113, 'Napoli': 113,
+  'AS Roma': 100,
+  'Paris Saint-Germain FC': 524, 'Paris Saint-Germain': 524,
+  'Olympique de Marseille': 516,
+  'Olympique Lyonnais': 523,
+};
+
+function teamIdFromName(name: string): number | null {
+  if (TEAM_NAME_TO_API_ID[name]) return TEAM_NAME_TO_API_ID[name];
+
+  const normalized = name.toLowerCase();
+  for (const [teamName, teamId] of Object.entries(TEAM_NAME_TO_API_ID)) {
+    if (normalized.includes(teamName.toLowerCase()) || teamName.toLowerCase().includes(normalized)) {
+      return teamId;
+    }
+  }
+  return null;
+}
+
+export async function fetchSquadForFixture(
+  fixtureId: string
+): Promise<{ home: TeamPlayer[]; away: TeamPlayer[] }> {
+  const cacheKey = `squad:${fixtureId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as { home: TeamPlayer[]; away: TeamPlayer[] };
+  }
+
+  const fixture = await prisma.fixture.findUnique({
+    where: { id: fixtureId },
+  });
+
+  if (!fixture) {
+    return { home: [], away: [] };
+  }
+
+  let homeTeamId: number | null = null;
+  let awayTeamId: number | null = null;
+
+  // Try to extract team IDs from raw_result (most reliable — comes from the API response)
+  const rawResult = fixture.raw_result as Record<string, unknown> | null;
+  if (rawResult) {
+    const homeTeam = rawResult.homeTeam as { id?: number } | undefined;
+    const awayTeam = rawResult.awayTeam as { id?: number } | undefined;
+    if (homeTeam?.id) homeTeamId = homeTeam.id;
+    if (awayTeam?.id) awayTeamId = awayTeam.id;
+  }
+
+  // Fall back to name mapping
+  if (!homeTeamId) homeTeamId = teamIdFromName(fixture.home_team);
+  if (!awayTeamId) awayTeamId = teamIdFromName(fixture.away_team);
+
+  if (!homeTeamId || !awayTeamId) {
+    return { home: [], away: [] };
+  }
+
+  let homeSquad: TeamPlayer[] = [];
+  let awaySquad: TeamPlayer[] = [];
+
+  try {
+    const homeDetails = await fetchTeamCached(homeTeamId);
+    homeSquad = homeDetails?.squad ?? [];
+  } catch (e) {
+    console.error('Failed to fetch home squad:', e);
+  }
+
+  try {
+    const awayDetails = await fetchTeamCached(awayTeamId);
+    awaySquad = awayDetails?.squad ?? [];
+  } catch (e) {
+    console.error('Failed to fetch away squad:', e);
+  }
+
+  const result = { home: homeSquad, away: awaySquad };
+  if (homeSquad.length > 0 || awaySquad.length > 0) {
+    await redis.setex(cacheKey, SQUAD_CACHE_TTL, JSON.stringify(result));
+  }
+
+  return result;
+}
+
+export function selectStarting11(squad: TeamPlayer[]): MatchLineupPlayer[] {
+  const grouped: Record<'gk' | 'def' | 'mid' | 'fwd', TeamPlayer[]> = {
+    gk: [], def: [], mid: [], fwd: [],
+  };
+
+  for (const p of squad) {
+    if (!p.position) continue;
+    const role = mapApiPositionToRole(p.position);
+    grouped[role].push(p);
+  }
+
+  // Sort each group by market value descending (best players first)
+  for (const role of Object.keys(grouped) as Array<keyof typeof grouped>) {
+    grouped[role].sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0));
+  }
+
+  const picks: TeamPlayer[] = [];
+  const target = { gk: 1, def: 4, mid: 3, fwd: 3 };
+
+  for (const role of ['gk', 'def', 'mid', 'fwd'] as const) {
+    const available = grouped[role];
+    const need = target[role];
+    picks.push(...available.slice(0, need));
+  }
+
+  // If we have fewer than 11 (e.g. squad has no forwards listed), fill from largest remaining group
+  if (picks.length < 11) {
+    const picked = new Set(picks.map(p => p.id));
+    const remaining = squad
+      .filter(p => !picked.has(p.id) && p.position)
+      .sort((a, b) => (b.marketValue ?? 0) - (a.marketValue ?? 0));
+    for (const p of remaining) {
+      if (picks.length >= 11) break;
+      picks.push(p);
+    }
+  }
+
+  return picks.slice(0, 11).map(p => ({
+    id: p.id,
+    name: p.name,
+    position: p.position,
+    shirtNumber: p.shirtNumber ?? 0,
+    marketValue: p.marketValue,
+  }));
+}
+
+export interface MatchLineupPlayer {
+  id: number;
+  name: string;
+  position: string;
+  shirtNumber: number;
+  marketValue?: number | null;
+}
+
+export interface MatchLineup {
+  formation: string;
+  lineup: MatchLineupPlayer[];
+}
+
+export interface MatchTeamLineup {
+  id: number;
+  name: string;
+  shortName: string;
+  tla: string;
+  crest: string;
+  formation: string;
+  lineup: MatchLineupPlayer[];
+}
+
+interface MatchApiResponse {
+  id: number;
+  utcDate: string;
+  status: string;
+  homeTeam: MatchTeamLineup;
+  awayTeam: MatchTeamLineup;
+  score: {
+    fullTime: { home: number | null; away: number | null };
+  };
+}
+
+const LINEUP_CACHE_TTL = 60 * 60; // 1h in seconds
+
+export async function fetchMatchLineup(
+  externalFixtureId: string
+): Promise<{ home: MatchLineup; away: MatchLineup; formation: string } | null> {
+  const cacheKey = `lineup:${externalFixtureId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return JSON.parse(cached) as { home: MatchLineup; away: MatchLineup; formation: string };
+  }
+
+  try {
+    const data = await fetchWithToken<MatchApiResponse>(`/matches/${externalFixtureId}`);
+
+    if (!data?.homeTeam?.lineup || !data?.awayTeam?.lineup ||
+        data.homeTeam.lineup.length === 0 || data.awayTeam.lineup.length === 0) {
+      return null;
+    }
+
+    const homeLineup: MatchLineup = {
+      formation: data.homeTeam.formation || '4-3-3',
+      lineup: data.homeTeam.lineup.slice(0, 11),
+    };
+
+    const awayLineup: MatchLineup = {
+      formation: data.awayTeam.formation || '4-3-3',
+      lineup: data.awayTeam.lineup.slice(0, 11),
+    };
+
+    const formation = data.homeTeam.formation || '4-3-3';
+    const result = { home: homeLineup, away: awayLineup, formation };
+    await redis.setex(cacheKey, LINEUP_CACHE_TTL, JSON.stringify(result));
+
+    return result;
+  } catch (e) {
+    console.error('Failed to fetch match lineup:', e);
+    return null;
+  }
+}
+
+export function marketValueToRating(marketValue: number | null | undefined): number {
+  if (!marketValue || marketValue <= 0) return 60;
+  
+  const logValue = Math.log10(marketValue);
+  const rating = Math.round(30 + logValue * 15);
+  return Math.max(40, Math.min(99, rating));
+}
+
+export function mapApiPositionToRole(position: string): 'gk' | 'def' | 'mid' | 'fwd' {
+  const p = position.toLowerCase();
+  
+  if (p.includes('goalkeeper') || p.includes('gk')) return 'gk';
+  if (p.includes('back') || p.includes('defender') || p.includes('defence')) return 'def';
+  if (p.includes('forward') || p.includes('striker') || p.includes('winger') || p.includes('attack')) return 'fwd';
+  
+  return 'mid';
+}
+
+export function getGridPositionForRole(
+  role: 'gk' | 'def' | 'mid' | 'fwd',
+  side: 'home' | 'away',
+  position: string,
+  indexInRole: number
+): { col: number; row: number } {
+  const attackDir = side === 'home' ? 1 : -1;
+  const baseCol = side === 'home' ? 0 : 14;
+  
+  if (role === 'gk') {
+    return { col: baseCol + attackDir * 1, row: 4 };
+  }
+
+  if (role === 'def') {
+    const defPositions: Record<string, number> = {
+      'right-back': 1,
+      'right centre-back': 3,
+      'centre-back': 3,
+      'left centre-back': 5,
+      'left-back': 7,
+    };
+    const posKey = position.toLowerCase();
+    let row = defPositions[posKey] ?? (indexInRole === 0 ? 1 : indexInRole === 1 ? 3 : indexInRole === 2 ? 5 : 7);
+    return { col: baseCol + attackDir * 3, row };
+  }
+
+  if (role === 'mid') {
+    const midPositions: Record<string, number> = {
+      'defensive midfield': 4,
+      'central midfield': 4,
+      'attacking midfield': 4,
+      'right midfield': 2,
+      'left midfield': 6,
+    };
+    const posKey = position.toLowerCase();
+    let row = midPositions[posKey] ?? (indexInRole === 0 ? 2 : indexInRole === 1 ? 4 : 6);
+    return { col: baseCol + attackDir * 6, row };
+  }
+
+  if (role === 'fwd') {
+    const fwdPositions: Record<string, number> = {
+      'right winger': 1,
+      'centre-forward': 4,
+      'left winger': 7,
+      'striker': 4,
+    };
+    const posKey = position.toLowerCase();
+    let row = fwdPositions[posKey] ?? (indexInRole === 0 ? 3 : indexInRole === 1 ? 4 : 5);
+    return { col: baseCol + attackDir * 9, row };
+  }
+
+  return { col: 7, row: 4 };
 }

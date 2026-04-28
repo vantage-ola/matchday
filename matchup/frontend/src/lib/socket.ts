@@ -1,4 +1,4 @@
-import type { GameState, Resolution, Move } from '../types';
+import type { GameState, SpatialResolution, GameMove } from '../types';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 
@@ -8,17 +8,20 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 interface SocketEvents {
   OPPONENT_COMMITTED: EventHandler;
-  TURN_RESOLVED: EventHandler<{ resolution: Resolution; gameState: GameState }>;
-  PHASE_TRANSITION: EventHandler<{ newPhase: number; state: GameState }>;
-  MATCHUP_COMPLETE: EventHandler<{ finalState: GameState }>;
+  TURN_RESOLVED: EventHandler<{ resolution: SpatialResolution; gameState: GameState }>;
+  PHASE_TRANSITION: EventHandler<{ newPhase: number; attackingSide: PlayerSide; state: GameState }>;
+  MATCHUP_COMPLETE: EventHandler<{ finalState: GameState; result: { homeGoals: number; awayGoals: number; homePossession: number; awayPossession: number } }>;
   OPPONENT_DISCONNECTED: EventHandler<{ reconnectWindowSeconds: number }>;
   BOT_SUBSTITUTED: EventHandler;
   PONG: EventHandler;
   GAME_STATE: EventHandler<GameState>;
-  MOVE_COMMITTED: EventHandler;
+  MOVE_COMMITTED: EventHandler<{ playerSide: PlayerSide; turnStatus: TurnStatus }>;
   MATCHUP_ABANDONED: EventHandler;
   CONNECTION_STATUS: EventHandler<ConnectionStatus>;
 }
+
+type PlayerSide = 'home' | 'away';
+type TurnStatus = 'waiting_both' | 'waiting_home' | 'waiting_away' | 'resolving';
 
 class SocketClient {
   private ws: WebSocket | null = null;
@@ -77,7 +80,6 @@ class SocketClient {
       this.stopPing();
       this.updateStatus('disconnected');
       
-      // Normal closure (e.g. we called disconnect())
       if (event.code === 1000 || event.code === 1001) {
         return;
       }
@@ -87,7 +89,6 @@ class SocketClient {
 
     this.ws.onerror = (err) => {
       console.error('WebSocket error:', err);
-      // The onclose handler will be called immediately after onerror
     };
   }
   
@@ -99,7 +100,6 @@ class SocketClient {
 
     this.clearReconnectTimer();
 
-    // Exponential backoff with jitter
     const delay = Math.min(
       30000, 
       this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts) + Math.random() * 1000
@@ -142,7 +142,7 @@ class SocketClient {
     );
   }
 
-  commitMove(move: Move): void {
+  commitMove(move: GameMove): void {
     this.send('COMMIT_MOVE', { move });
   }
 

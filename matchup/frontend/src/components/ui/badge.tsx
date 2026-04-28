@@ -19,6 +19,10 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        live: "bg-tertiary-fixed text-on-tertiary-fixed animate-pulse",
+        league: "border border-primary text-primary bg-transparent",
+        result: "bg-primary-container text-on-primary",
+        "result-loss": "border border-primary-container text-primary-container bg-transparent",
       },
     },
     defaultVariants: {

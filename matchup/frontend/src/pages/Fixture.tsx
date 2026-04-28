@@ -1,11 +1,16 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Check, Minus, Plus, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Minus, Plus, ArrowRight, Check } from 'lucide-react';
 import { PageLayout } from '@/components/layouts';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardHeader, CardContent, CardFooter, CardAction } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getTeamColors, getTeamAbbr } from '@/lib/team-colors';
 
@@ -203,7 +208,7 @@ export default function Fixture() {
   }
 
   const kickoffTime = new Date(fixture.kickoffAt);
-  const timeStr = kickoffTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = kickoffTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
   const dateStr = kickoffTime.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
   // ─── Matchmaking Waiting Screen ─────────────────────────────────────────────
@@ -260,36 +265,69 @@ export default function Fixture() {
     );
   }
 
+  const homeColors = getTeamColors(fixture.homeTeam);
+  const awayColors = getTeamColors(fixture.awayTeam);
+  const homeAbbr = getTeamAbbr(fixture.homeTeam);
+  const awayAbbr = getTeamAbbr(fixture.awayTeam);
+
   // ─── Fixture Setup Screen ──────────────────────────────────────────────────
   return (
     <PageLayout balance={user?.walletBalance ?? 0}>
-      <div className="flex flex-col lg:flex-row h-full gap-6">
-        <section className="lg:w-[40%] flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <span className="text-label text-muted">{fixture.league}</span>
-              <div className="text-headline text-primary mt-1">
-                {fixture.homeTeam} vs {fixture.awayTeam}
+      <div className="max-w-lg mx-auto flex flex-col gap-6">
+        {/* Fixture Header Card */}
+        <Card className="rounded-sm ring-0 border border-outline-variant/20 bg-surface-container-low py-0 gap-0">
+          <CardHeader className="border-b border-outline-variant/20 bg-surface-container-high py-3">
+            <Badge variant="league">{fixture.league}</Badge>
+            <CardAction>
+              <span className="text-label-xs text-muted">{dateStr} · {timeStr}</span>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col items-center gap-3 w-1/3">
+                {fixture.homeTeamLogo ? (
+                  <img src={fixture.homeTeamLogo} alt={fixture.homeTeam} className="w-14 h-14 object-contain" />
+                ) : (
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg"
+                    style={{ backgroundColor: homeColors.primary, color: homeColors.text }}
+                  >
+                    {homeAbbr}
+                  </div>
+                )}
+                <span className="font-bold text-sm text-center">{fixture.homeTeam}</span>
               </div>
-              <span className="text-label text-muted mt-2 block">
-                {dateStr} · {timeStr}
-              </span>
+              <span className="text-3xl font-black tracking-tight text-foreground">VS</span>
+              <div className="flex flex-col items-center gap-3 w-1/3">
+                {fixture.awayTeamLogo ? (
+                  <img src={fixture.awayTeamLogo} alt={fixture.awayTeam} className="w-14 h-14 object-contain" />
+                ) : (
+                  <div
+                    className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg"
+                    style={{ backgroundColor: awayColors.primary, color: awayColors.text }}
+                  >
+                    {awayAbbr}
+                  </div>
+                )}
+                <span className="font-bold text-sm text-center">{fixture.awayTeam}</span>
+              </div>
             </div>
-          </div>
-
+          </CardContent>
           {fixture.venue && (
-            <p className="text-label text-muted mb-6">{fixture.venue}</p>
+            <CardFooter className="border-t border-outline-variant/20 bg-surface-container py-3">
+              <span className="text-[10px] uppercase tracking-wider text-muted">{fixture.venue}</span>
+            </CardFooter>
           )}
+        </Card>
 
-          <div className="hairline-b mb-6" />
-
+        {/* Side Selection */}
+        <div>
           <h3 className="text-label text-muted mb-4">SELECT YOUR SIDE</h3>
-
           <div className="flex flex-col gap-3">
             <button
               onClick={() => setSelectedSide('home')}
               className={cn(
-                'flex items-center justify-between p-4 border transition-colors',
+                'flex items-center justify-between p-4 border transition-colors rounded-sm',
                 selectedSide === 'home'
                   ? 'bg-surface-container-high border-primary-container'
                   : 'bg-surface border-outline-variant/20 hover:border-outline-variant'
@@ -297,36 +335,27 @@ export default function Fixture() {
             >
               <div className="flex items-center gap-3">
                 {fixture.homeTeamLogo ? (
-                  <img
-                    src={fixture.homeTeamLogo}
-                    alt={fixture.homeTeam}
-                    className="w-10 h-10 object-contain"
-                  />
+                  <img src={fixture.homeTeamLogo} alt={fixture.homeTeam} className="w-10 h-10 object-contain" />
                 ) : (
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                    style={{
-                      backgroundColor: getTeamColors(fixture.homeTeam).primary,
-                      color: getTeamColors(fixture.homeTeam).text,
-                    }}
+                    style={{ backgroundColor: homeColors.primary, color: homeColors.text }}
                   >
-                    {getTeamAbbr(fixture.homeTeam)}
+                    {homeAbbr}
                   </div>
                 )}
                 <span className="text-title">{fixture.homeTeam}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-label text-muted">{lobby?.homeCount || 0} playing</span>
-                {selectedSide === 'home' && (
-                  <Check className="w-4 h-4 text-primary" />
-                )}
+                <span className="text-label-xs text-muted">{lobby?.homeCount || 0} playing</span>
+                {selectedSide === 'home' && <Check className="w-4 h-4 text-primary" />}
               </div>
             </button>
 
             <button
               onClick={() => setSelectedSide('away')}
               className={cn(
-                'flex items-center justify-between p-4 border transition-colors',
+                'flex items-center justify-between p-4 border transition-colors rounded-sm',
                 selectedSide === 'away'
                   ? 'bg-surface-container-high border-primary-container'
                   : 'bg-surface border-outline-variant/20 hover:border-outline-variant'
@@ -334,103 +363,91 @@ export default function Fixture() {
             >
               <div className="flex items-center gap-3">
                 {fixture.awayTeamLogo ? (
-                  <img
-                    src={fixture.awayTeamLogo}
-                    alt={fixture.awayTeam}
-                    className="w-10 h-10 object-contain"
-                  />
+                  <img src={fixture.awayTeamLogo} alt={fixture.awayTeam} className="w-10 h-10 object-contain" />
                 ) : (
                   <div
                     className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                    style={{
-                      backgroundColor: getTeamColors(fixture.awayTeam).primary,
-                      color: getTeamColors(fixture.awayTeam).text,
-                    }}
+                    style={{ backgroundColor: awayColors.primary, color: awayColors.text }}
                   >
-                    {getTeamAbbr(fixture.awayTeam)}
+                    {awayAbbr}
                   </div>
                 )}
                 <span className="text-title">{fixture.awayTeam}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-label text-muted">{lobby?.awayCount || 0} playing</span>
-                {selectedSide === 'away' && (
-                  <Check className="w-4 h-4 text-primary" />
-                )}
+                <span className="text-label-xs text-muted">{lobby?.awayCount || 0} playing</span>
+                {selectedSide === 'away' && <Check className="w-4 h-4 text-primary" />}
               </div>
             </button>
           </div>
-        </section>
+        </div>
 
-        <section className="lg:w-[60%] flex flex-col gap-6">
-          <div>
-            <label className="text-label text-muted mb-2 block">STAKE</label>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setStake(Math.max(50, stake - 50))}
-                className="w-10 h-10 border border-outline-variant flex items-center justify-center hover:bg-surface-container transition-colors"
-              >
-                <Minus className="w-4 h-4" />
-              </button>
-              <span className="text-display text-foreground">₦{stake}</span>
-              <button
-                onClick={() => setStake(Math.min(user?.walletBalance ?? 1000, stake + 50))}
-                className="w-10 h-10 border border-outline-variant flex items-center justify-center hover:bg-surface-container transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+        <Separator className="bg-outline-variant/20" />
 
-          <div className="hairline-b" />
+        {/* Game Mode */}
+        <div>
+          <h3 className="text-label text-muted mb-4">GAME MODE</h3>
+          <Tabs value={gameMode} onValueChange={(val) => setGameMode(val as 'matchup_only' | 'real_match')}>
+            <TabsList variant="line" className="w-full">
+              <TabsTrigger value="matchup_only" className="flex-1 text-label font-bold uppercase tracking-wider">
+                Matchup Only
+              </TabsTrigger>
+              <TabsTrigger value="real_match" className="flex-1 text-label font-bold uppercase tracking-wider">
+                Real Match
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="matchup_only">
+              <p className="text-label-xs text-muted mt-3">
+                Play the matchup game only. Settlement happens immediately.
+              </p>
+            </TabsContent>
+            <TabsContent value="real_match">
+              <p className="text-label-xs text-muted mt-3">
+                Your matchup score is combined with prediction accuracy of the real match result.
+              </p>
+            </TabsContent>
+          </Tabs>
+        </div>
 
-          <div>
-            <label className="text-label text-muted mb-2 block">GAME MODE</label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setGameMode('matchup_only')}
-                className={cn(
-                  'flex-1 py-3 px-4 border text-label font-bold transition-colors',
-                  gameMode === 'matchup_only'
-                    ? 'bg-primary-container text-on-primary border-primary-container'
-                    : 'bg-surface text-foreground border-outline-variant hover:border-primary-container'
-                )}
-              >
-                MATCHUP ONLY
-              </button>
-              <button
-                onClick={() => setGameMode('real_match')}
-                className={cn(
-                  'flex-1 py-3 px-4 border text-label font-bold transition-colors',
-                  gameMode === 'real_match'
-                    ? 'bg-primary-container text-on-primary border-primary-container'
-                    : 'bg-surface text-foreground border-outline-variant hover:border-primary-container'
-                )}
-              >
-                REAL MATCH MODE
-              </button>
-            </div>
-            <p className="text-label-xs text-muted mt-2">
-              {gameMode === 'matchup_only'
-                ? 'Play the matchup game only. Settlement happens immediately.'
-                : 'Your matchup score is combined with prediction accuracy of the real match result.'}
-            </p>
-          </div>
+        <Separator className="bg-outline-variant/20" />
 
-          <div className="mt-auto">
-            <button
-              onClick={handleJoin}
-              disabled={matchmaking}
-              className="w-full py-4 bg-primary-container text-on-primary font-bold text-label flex items-center justify-center gap-2 hover:bg-primary-container/90 transition-colors disabled:opacity-50"
+        {/* Stake */}
+        <div>
+          <h3 className="text-label text-muted mb-4">STAKE</h3>
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setStake(Math.max(50, stake - 50))}
             >
-              FIND OPPONENT
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <p className="text-label-xs text-muted mt-3 text-center">
-              If no opponent found in 20s, a bot joins automatically.
-            </p>
+              <Minus className="w-4 h-4" />
+            </Button>
+            <span className="text-display text-foreground tabular-nums">₦{stake}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setStake(Math.min(user?.walletBalance ?? 1000, stake + 50))}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
           </div>
-        </section>
+        </div>
+
+        {/* CTA */}
+        <div className="pt-2">
+          <Button
+            variant="primary"
+            onClick={handleJoin}
+            disabled={matchmaking}
+            className="w-full h-12 text-label font-bold gap-2"
+          >
+            FIND OPPONENT
+            <ArrowRight className="w-4 h-4" />
+          </Button>
+          <p className="text-label-xs text-muted mt-3 text-center">
+            If no opponent found in 20s, a bot joins automatically.
+          </p>
+        </div>
       </div>
     </PageLayout>
   );

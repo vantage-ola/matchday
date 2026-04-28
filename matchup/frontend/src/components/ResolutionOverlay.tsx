@@ -1,63 +1,73 @@
-import { useEffect, useState } from 'react';
-import type { Resolution, Move } from '../types';
+import { useEffect, useRef, useState } from 'react';
+import type { GameState, SpatialResolution, PlayerSide } from '../types';
+import { resolveCapName, formatAction } from '@/lib/game-utils';
 import { cn } from '@/lib/utils';
 
 interface ResolutionOverlayProps {
-  resolution: Resolution;
-  playerSide: 'p1' | 'p2';
+  resolution: SpatialResolution;
+  playerSide: PlayerSide;
+  gameState: GameState;
   onComplete: () => void;
 }
 
-const OUTCOME_CONFIG: Record<string, { label: string; color: string }> = {
-  advance: { label: 'ADVANCE', color: 'text-tertiary-fixed' },
-  intercept: { label: 'INTERCEPTED', color: 'text-orange-400' },
-  tackle: { label: 'TACKLED', color: 'text-red-400' },
-  goal: { label: 'GOAL', color: 'text-tertiary-fixed' },
-  save: { label: 'SAVED', color: 'text-muted' },
-  miss: { label: 'MISSED', color: 'text-muted' },
+const OUTCOME_CONFIG: Record<string, { label: string; color: string; explanation: string }> = {
+  advance: { label: 'ADVANCE', color: 'text-tertiary-fixed', explanation: 'Attack progresses forward' },
+  intercept: { label: 'INTERCEPTED', color: 'text-orange-400', explanation: 'Defender read the pass' },
+  tackle: { label: 'TACKLED', color: 'text-red-400', explanation: 'Ball won in a challenge' },
+  goal: { label: 'GOAL!', color: 'text-green-400', explanation: 'The ball hits the net!' },
+  save: { label: 'SAVED', color: 'text-muted', explanation: 'Keeper stopped the shot' },
+  miss: { label: 'MISSED', color: 'text-muted', explanation: 'Shot went off target' },
+  through: { label: 'THROUGH BALL', color: 'text-blue-400', explanation: 'Pass split the defense' },
+  press_won: { label: 'PRESS WON', color: 'text-yellow-400', explanation: 'High pressure forced a turnover' },
+  blocked: { label: 'BLOCKED', color: 'text-muted', explanation: 'Shot blocked by defender' },
+  wide: { label: 'WIDE', color: 'text-muted', explanation: 'Completely off target' },
 };
 
 export default function ResolutionOverlay({
   resolution,
   playerSide,
+  gameState,
   onComplete,
 }: ResolutionOverlayProps) {
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    // Entrance
+    setVisible(false);
+    setExiting(false);
     requestAnimationFrame(() => setVisible(true));
 
-    // Auto dismiss after 2.5s
     const dismissTimer = setTimeout(() => {
       setExiting(true);
-    }, 2500);
+    }, 2000);
 
-    // Clean up after exit animation
     const completeTimer = setTimeout(() => {
-      onComplete();
-    }, 3000);
+      onCompleteRef.current();
+    }, 2300);
 
     return () => {
       clearTimeout(dismissTimer);
       clearTimeout(completeTimer);
     };
-  }, [onComplete]);
+  }, [resolution]);
 
-  const yourMove = playerSide === 'p1' ? resolution.p1Move : resolution.p2Move;
-  const oppMove = playerSide === 'p1' ? resolution.p2Move : resolution.p1Move;
-  const config = OUTCOME_CONFIG[resolution.outcome] || { label: resolution.outcome.toUpperCase(), color: 'text-foreground' };
-  const isYourGoal = resolution.goalScored && resolution.scorer === playerSide;
-  const isOppGoal = resolution.goalScored && resolution.scorer !== playerSide;
+  const config = OUTCOME_CONFIG[resolution.outcome] || { label: resolution.outcome.toUpperCase(), color: 'text-foreground', explanation: '' };
+  const isYourGoal = resolution.goalScored && resolution.scorerCapId?.includes(playerSide);
+  const isOppGoal = resolution.goalScored && resolution.scorerCapId && !resolution.scorerCapId.includes(playerSide);
+
+  const attackerName = resolveCapName(resolution.attackerMove.fromCapId, gameState);
+  const defenderName = resolveCapName(resolution.defenderMove.fromCapId, gameState);
 
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[200] flex items-center justify-center transition-all duration-500',
+        'fixed inset-0 z-[200] flex items-center justify-center transition-all duration-500 cursor-pointer',
         visible && !exiting ? 'bg-black/85 backdrop-blur-sm' : 'bg-black/0',
         exiting && 'opacity-0'
       )}
+      onClick={() => onCompleteRef.current()}
     >
       <div
         className={cn(
@@ -68,8 +78,8 @@ export default function ResolutionOverlay({
               ? 'translate-y-4 opacity-0 scale-95'
               : 'translate-y-2 opacity-0 scale-95'
         )}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Outcome — center prominent */}
         <div className="text-center">
           <div className={cn(
             'text-3xl md:text-4xl font-black tracking-tight transition-all duration-700',
@@ -79,43 +89,36 @@ export default function ResolutionOverlay({
           )}>
             {config.label}
           </div>
-          {resolution.possessionChange && !resolution.goalScored && (
+          {config.explanation && (
             <p className="text-label-xs text-muted mt-2">
-              Possession {resolution.scorer === playerSide ? 'lost' : 'gained'}
+              {config.explanation}
+            </p>
+          )}
+          {resolution.possessionChange && !resolution.goalScored && (
+            <p className="text-label-xs text-muted mt-1">
+              Possession changed
             </p>
           )}
         </div>
 
-        {/* Move comparison */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <span className="text-label-xs text-muted">YOU</span>
-            <div className={cn(
-              'px-4 py-2 font-bold text-sm uppercase tracking-wide',
-              isYourGoal
-                ? 'bg-primary-container text-on-primary'
-                : 'bg-surface-container text-foreground'
-            )}>
-              {formatMove(yourMove)}
+            <span className="text-label-xs text-muted">ATTACKER</span>
+            <div className="px-3 py-2 font-bold text-xs uppercase tracking-wide bg-surface-container rounded-sm">
+              {attackerName}: {formatAction(resolution.attackerMove.action)}
             </div>
           </div>
 
           <div className="text-muted text-xl font-light">vs</div>
 
           <div className="flex flex-col items-center gap-1.5 flex-1">
-            <span className="text-label-xs text-muted">OPPONENT</span>
-            <div className={cn(
-              'px-4 py-2 font-bold text-sm uppercase tracking-wide',
-              isOppGoal
-                ? 'bg-destructive/20 text-destructive'
-                : 'bg-surface-container text-foreground'
-            )}>
-              {formatMove(oppMove)}
+            <span className="text-label-xs text-muted">DEFENDER</span>
+            <div className="px-3 py-2 font-bold text-xs uppercase tracking-wide bg-surface-container rounded-sm">
+              {defenderName}: {formatAction(resolution.defenderMove.action)}
             </div>
           </div>
         </div>
 
-        {/* Goal celebration */}
         {isYourGoal && (
           <div className="text-center animate-bounce">
             <span className="text-headline text-tertiary-fixed">YOU SCORED!</span>
@@ -123,14 +126,14 @@ export default function ResolutionOverlay({
         )}
         {isOppGoal && (
           <div className="text-center">
-            <span className="text-sm font-semibold text-muted">Opponent scored</span>
+            <span className="text-title text-red-400 font-black">OPPONENT SCORED</span>
           </div>
         )}
+
+        <div className="text-center">
+          <span className="text-[10px] text-muted/50">tap to dismiss</span>
+        </div>
       </div>
     </div>
   );
-}
-
-function formatMove(move: Move): string {
-  return move.replace('_', ' ');
 }

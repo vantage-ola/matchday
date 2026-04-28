@@ -1,11 +1,11 @@
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { GameState, PlayerNumber } from '../types';
+import type { GameState, PlayerSide } from '../types';
 import type { TeamColors } from '@/lib/team-colors';
 
 interface ScoreBarProps {
   gameState: GameState;
-  playerSide: PlayerNumber;
+  playerSide: PlayerSide;
   homeTeam: string;
   awayTeam: string;
   league?: string;
@@ -38,15 +38,11 @@ export default function ScoreBar({
 }: ScoreBarProps) {
   const navigate = useNavigate();
 
-  // Derive which score maps to home/away display
-  // p1 always = player1, session tells us if player1 = home or away
-  // For the score bar we show home on left, away on right
-  const homeScore = gameState.score.p1;
-  const awayScore = gameState.score.p2;
+  const homeScore = gameState.score.home;
+  const awayScore = gameState.score.away;
 
-  // Determine which team is "you"
-  const isP1 = playerSide === 'p1';
-  const homeIsYou = isP1; // p1 = player1 = the score order matches
+  const isHome = playerSide === 'home';
+  const homeIsYou = isHome;
 
   const homeAbbr = yourAbbrProp && oppAbbrProp
     ? (homeIsYou ? yourAbbrProp : oppAbbrProp)
@@ -60,14 +56,12 @@ export default function ScoreBar({
 
   const phaseName = PHASE_NAMES[Math.min(gameState.phase - 1, PHASE_NAMES.length - 1)] || `PHASE ${gameState.phase}`;
 
-  // Simulate match minute
   const baseMinute = Math.floor(((gameState.phase - 1) / gameState.totalPhases) * 90);
   const turnMinute = Math.floor(((gameState.turn - 1) / gameState.movesPerPhase) * (90 / gameState.totalPhases));
   const displayMinute = Math.min(90, baseMinute + turnMinute);
 
   return (
     <header className="flex items-center w-full px-3 md:px-5 h-12 md:h-14 bg-surface-container-lowest/80 backdrop-blur-sm shrink-0 hairline-b">
-      {/* Left: Back + Phase */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
           onClick={() => navigate('/')}
@@ -85,7 +79,6 @@ export default function ScoreBar({
         </div>
       </div>
 
-      {/* Center: Scoreline with team color badges */}
       <div className="flex items-center gap-2 md:gap-4 px-4">
         <div className="flex items-center gap-1.5">
           <div
@@ -134,7 +127,6 @@ export default function ScoreBar({
         </div>
       </div>
 
-      {/* Right: Minute */}
       <div className="flex items-center gap-3 flex-1 justify-end">
         <div className="text-right">
           <span className="text-[10px] font-semibold text-muted tracking-wider block">MIN</span>

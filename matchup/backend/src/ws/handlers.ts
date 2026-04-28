@@ -1,6 +1,6 @@
 import type { RawData } from 'ws';
 import type { WSClient } from './server.js';
-import type { Move, PlayerNumber, WSEvent, GameState } from '../types/index.js';
+import type { GameMove, CapSide, WSEvent, GameState } from '../types/index.js';
 import { getGameState } from '../services/matchmaking.js';
 import { commitMove } from '../engine/matchup.js';
 import { sendToClient, broadcastToSession, getClientsForSession, removeClientFromSession } from './server.js';
@@ -8,17 +8,13 @@ import { prisma } from '../db/prisma.js';
 import { scheduleBotMove } from '../engine/bot.js';
 import { getCommittedMove } from '../services/matchmaking.js';
 
-interface CommitMovePayload {
-  move: Move;
-}
-
 interface WSMessage {
   type: string;
   payload?: unknown;
 }
 
 const RECONNECT_WINDOW_MS = 30_000;
-const reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+const disconnectTimers: Map<string, NodeJS.Timeout> = new Map();
 
 function parseMessage(data: RawData): WSMessage | null {
   try {
@@ -43,6 +39,14 @@ export async function handleConnection(ws: WSClient): Promise<void> {
 
   if (!ws.sessionId || !ws.userId) return;
 
+  // Clear disconnect timer if reconnecting
+  const timerKey = `${ws.sessionId}:${ws.userId}`;
+  const existingTimer = disconnectTimers.get(timerKey);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    disconnectTimers.delete(timerKey);
+  }
+
   const gameState = await getGameState(ws.sessionId);
   if (gameState) {
     sendToClient(ws, 'GAME_STATE', gameState);
@@ -57,7 +61,7 @@ export async function handleMessage(ws: WSClient, data: RawData): Promise<void> 
 
   switch (type) {
     case 'COMMIT_MOVE': {
-      await handleCommitMove(ws, payload as CommitMovePayload);
+      await handleCommitMove(ws, payload as { move: GameMove });
       break;
     }
 
@@ -80,7 +84,7 @@ export async function handleMessage(ws: WSClient, data: RawData): Promise<void> 
   }
 }
 
-async function handleCommitMove(ws: WSClient, payload: CommitMovePayload): Promise<void> {
+async function handleCommitMove(ws: WSClient, payload: { move: GameMove }): Promise<void> {
   const { move } = payload;
   const { userId, sessionId } = ws;
 
@@ -89,9 +93,8 @@ async function handleCommitMove(ws: WSClient, payload: CommitMovePayload): Promi
     return;
   }
 
-  const validMoves: Move[] = ['pass', 'long_ball', 'run', 'press', 'tackle', 'hold_shape', 'shoot', 'sprint'];
-  if (!validMoves.includes(move)) {
-    sendToClient(ws, 'ERROR', { message: 'Invalid move' });
+  if (!move || !move.fromCapId || !move.toPosition) {
+    sendToClient(ws, 'ERROR', { message: 'Invalid move format' });
     return;
   }
 
@@ -114,7 +117,7 @@ async function handleCommitMove(ws: WSClient, payload: CommitMovePayload): Promi
     return;
   }
 
-  const player: PlayerNumber = session.player1_id === userId ? 'p1' : 'p2';
+  const playerSide: CapSide = session.player1_id === userId ? (session.player1_side as CapSide) : (session.player2_side as CapSide);
   const gameState = await getGameState(sessionId);
 
   if (!gameState) {
@@ -122,39 +125,43 @@ async function handleCommitMove(ws: WSClient, payload: CommitMovePayload): Promi
     return;
   }
 
-  // Check if player has already committed this turn
-  const existingMove = await getCommittedMove(sessionId, player);
+  const redisKey = playerSide;
+  const existingMove = await getCommittedMove(sessionId, redisKey);
   if (existingMove) {
     sendToClient(ws, 'ERROR', { message: 'Already committed a move this turn' });
     return;
   }
 
   try {
-    const result = await commitMove(sessionId, player, move);
+    const result = await commitMove(sessionId, playerSide, move);
 
     if (result.status === 'resolved') {
-      // Both moves were committed — broadcast resolution to all clients
       broadcastToSession(sessionId, 'TURN_RESOLVED', {
         gameState: result.gameState,
         resolution: result.resolution,
       });
 
-      // Schedule next bot move only if game is NOT complete
-      // Don't schedule here - let bot.ts handle the recursive scheduling to avoid double-schedule
+      // Schedule bot for next turn if game is still active
+      if (result.gameState.phase <= result.gameState.totalPhases) {
+        const isBotGameAfterResolve = session.player2_id === null || await isBotPlayer(session.player2_id);
+        if (isBotGameAfterResolve) {
+          const botSideAfterResolve: CapSide = playerSide === 'home' ? 'away' : 'home';
+          scheduleBotMove(sessionId, botSideAfterResolve).catch((err) => {
+            console.error('Failed to schedule bot move after resolution:', err);
+          });
+        }
+      }
     } else {
-      // Only one player committed — notify the committer
       sendToClient(ws, 'MOVE_COMMITTED', { 
-        player, 
+        playerSide, 
         turnStatus: result.gameState.turnStatus 
       });
       
-      // Notify opponent that a move was committed (no details revealed)
       broadcastToOpponents(sessionId, userId, 'OPPONENT_COMMITTED', {});
 
-      // If opponent is a bot, schedule their move
       const isBotGame = session.player2_id === null || await isBotPlayer(session.player2_id);
       if (isBotGame) {
-        const botSide: PlayerNumber = session.player1_id === userId ? 'p2' : 'p1';
+        const botSide: CapSide = playerSide === 'home' ? 'away' : 'home';
         scheduleBotMove(sessionId, botSide).catch((err) => {
           console.error('Failed to schedule bot move:', err);
         });
@@ -182,16 +189,6 @@ function broadcastToOpponents(sessionId: string, excludeUserId: string, event: s
   });
 }
 
-function getOpponentClient(sessionId: string, currentPlayer: PlayerNumber): WSClient | null {
-  const clients = getClientsForSession(sessionId);
-  for (const client of clients) {
-    if (client.userId && client.userId !== currentPlayer) {
-      return client;
-    }
-  }
-  return null;
-}
-
 export async function handleDisconnect(ws: WSClient): Promise<void> {
   const { userId, sessionId } = ws;
 
@@ -201,20 +198,28 @@ export async function handleDisconnect(ws: WSClient): Promise<void> {
 
   removeClientFromSession(ws);
 
-  clearTimeout(reconnectTimers.get(sessionId));
+  const session = await prisma.matchupSession.findUnique({
+    where: { id: sessionId },
+  });
 
-  const timer = setTimeout(async () => {
-    await handlePlayerTimeout(sessionId, userId);
-  }, RECONNECT_WINDOW_MS);
+  if (!session || session.status !== 'active') return;
 
-  reconnectTimers.set(sessionId, timer);
-
-  const opponentClient = getOpponentForSession(sessionId, userId);
+  const opponentClient = getOpponentClient(sessionId, userId);
   if (opponentClient) {
     sendToClient(opponentClient, 'OPPONENT_DISCONNECTED', {
       reconnectWindowSeconds: RECONNECT_WINDOW_MS / 1000,
     });
   }
+
+  const timerKey = `${sessionId}:${userId}`;
+  const existing = disconnectTimers.get(timerKey);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(async () => {
+    disconnectTimers.delete(timerKey);
+    await handlePlayerTimeout(sessionId, userId);
+  }, RECONNECT_WINDOW_MS);
+  disconnectTimers.set(timerKey, timer);
 }
 
 async function handlePlayerTimeout(sessionId: string, userId: string): Promise<void> {
@@ -233,32 +238,12 @@ async function handlePlayerTimeout(sessionId: string, userId: string): Promise<v
   broadcastToSession(sessionId, 'MATCHUP_ABANDONED', { reason: 'opponent_timeout' });
 }
 
-function getOpponentForSession(sessionId: string, excludeUserId: string): WSClient | null {
+function getOpponentClient(sessionId: string, currentUserId: string): WSClient | null {
   const clients = getClientsForSession(sessionId);
   for (const client of clients) {
-    if (client.userId && client.userId !== excludeUserId) {
+    if (client.userId && client.userId !== currentUserId) {
       return client;
     }
   }
   return null;
-}
-
-export async function notifyOpponentCommitted(
-  ws: WSClient,
-  opponent: string
-): Promise<void> {
-  sendToClient(ws, 'OPPONENT_COMMITTED', { opponent });
-}
-
-export async function notifyOpponentDisconnected(
-  ws: WSClient,
-  reconnectWindowSeconds: number
-): Promise<void> {
-  sendToClient(ws, 'OPPONENT_DISCONNECTED', {
-    reconnectWindowSeconds,
-  });
-}
-
-export async function notifyBotSubstituted(ws: WSClient): Promise<void> {
-  sendToClient(ws, 'BOT_SUBSTITUTED', {});
 }

@@ -1,38 +1,24 @@
-import type { GameState, Move, PlayerNumber } from '../types';
+import type { GameState, PlayerSide, AttackerAction, DefenderAction } from '../types';
 
 export function isMyTurn(
   gameState: GameState,
-  playerSide: PlayerNumber
+  playerSide: PlayerSide
 ): boolean {
-  return gameState.turnStatus === 'waiting_both' ||
-    (gameState.turnStatus === 'waiting_p1' && playerSide === 'p1') ||
-    (gameState.turnStatus === 'waiting_p2' && playerSide === 'p2')
-    ? true
-    : false;
+  if (gameState.turnStatus === 'waiting_both') return true;
+  if (gameState.turnStatus === 'waiting_home') return playerSide === 'home';
+  if (gameState.turnStatus === 'waiting_away') return playerSide === 'away';
+  return false;
 }
 
-export function getMovesRemaining(
-  gameState: GameState,
-  playerSide: PlayerNumber
-): number {
-  return gameState.players[playerSide].movesRemaining;
-}
-
-export function canShoot(gameState: GameState, playerSide: PlayerNumber): boolean {
+export function canShoot(gameState: GameState, playerSide: PlayerSide): boolean {
   const attackPosition = gameState.ball.position;
-  const isAttacking = gameState.attackingPlayer === playerSide;
-  return isAttacking && attackPosition.col >= 7;
+  const isAttacking = gameState.attackingSide === playerSide;
+  if (!isAttacking) return false;
+  return playerSide === 'home' ? attackPosition.col >= 12 : attackPosition.col <= 2;
 }
 
-export function getAttackingPlayer(gameState: GameState): PlayerNumber {
-  return gameState.attackingPlayer;
-}
-
-export function getPlayerPosition(
-  gameState: GameState,
-  playerSide: PlayerNumber
-): { col: number; row: number } {
-  return gameState.players[playerSide].position;
+export function getAttackingSide(gameState: GameState): PlayerSide {
+  return gameState.attackingSide;
 }
 
 export function getBallPosition(
@@ -41,19 +27,23 @@ export function getBallPosition(
   return gameState.ball.position;
 }
 
+export function getBallCarrier(gameState: GameState): string | null {
+  return gameState.ball.carrierCapId;
+}
+
 export function getScore(
   gameState: GameState,
-  playerSide: PlayerNumber
+  playerSide: PlayerSide
 ): { mine: number; theirs: number } {
-  if (playerSide === 'p1') {
+  if (playerSide === 'home') {
     return {
-      mine: gameState.score.p1,
-      theirs: gameState.score.p2,
+      mine: gameState.score.home,
+      theirs: gameState.score.away,
     };
   }
   return {
-    mine: gameState.score.p2,
-    theirs: gameState.score.p1,
+    mine: gameState.score.away,
+    theirs: gameState.score.home,
   };
 }
 
@@ -73,49 +63,59 @@ export function getPhaseProgress(gameState: GameState): {
 
 export function getStats(
   gameState: GameState,
-  playerSide: PlayerNumber
+  playerSide: PlayerSide
 ): {
   possession: number;
   tackles: number;
   shots: number;
   assists: number;
 } {
-  return playerSide === 'p1' ? gameState.stats.p1 : gameState.stats.p2;
+  return playerSide === 'home' ? gameState.stats.home : gameState.stats.away;
 }
 
 export function getOpponentStats(
   gameState: GameState,
-  playerSide: PlayerNumber
+  playerSide: PlayerSide
 ): {
   possession: number;
   tackles: number;
   shots: number;
   assists: number;
 } {
-  return playerSide === 'p1' ? gameState.stats.p2 : gameState.stats.p1;
+  return playerSide === 'home' ? gameState.stats.away : gameState.stats.home;
 }
 
 export function isPhaseComplete(gameState: GameState): boolean {
-  const activePlayer = gameState.attackingPlayer;
-  return gameState.players[activePlayer].movesRemaining === 0;
+  return gameState.turn >= gameState.movesPerPhase;
 }
 
 export function isGameComplete(gameState: GameState): boolean {
   return gameState.phase > gameState.totalPhases;
 }
 
-export function availableMoves(
+export function getAvailableAttackerActions(
   gameState: GameState,
-  playerSide: PlayerNumber
-): Move[] {
-  const movesAvailable = gameState.players[playerSide].movesRemaining > 0;
+  playerSide: PlayerSide
+): AttackerAction[] {
+  const isAttacking = gameState.attackingSide === playerSide;
+  if (!isAttacking) return [];
+  
   const canShootNow = canShoot(gameState, playerSide);
-
-  const baseMoves: Move[] = ['pass', 'long_ball', 'run', 'press', 'tackle', 'hold_shape', 'sprint'];
-
-  if (canShootNow && movesAvailable) {
-    return [...baseMoves, 'shoot'];
+  const actions: AttackerAction[] = ['pass', 'through_pass', 'cross', 'long_ball', 'run'];
+  
+  if (canShootNow) {
+    actions.push('shoot');
   }
+  
+  return actions;
+}
 
-  return movesAvailable ? baseMoves : [];
+export function getAvailableDefenderActions(
+  gameState: GameState,
+  playerSide: PlayerSide
+): DefenderAction[] {
+  const isAttacking = gameState.attackingSide === playerSide;
+  if (isAttacking) return [];
+  
+  return ['press', 'tackle', 'intercept', 'hold_shape', 'track_back'];
 }

@@ -1,20 +1,20 @@
-import type { MatchupSession, Settlement } from '../types/index.js';
+import type { MatchupSession, Settlement, PlayerSide } from '../types/index.js';
 
 const LAYER1_WEIGHT = 0.6;
 const LAYER2_WEIGHT = 0.4;
 const PLATFORM_FEE = 0.1;
 
 export function calculateMatchupScore(
-  p1Goals: number,
-  p2Goals: number
-): { p1: number; p2: number } {
-  const total = p1Goals + p2Goals;
+  homeGoals: number,
+  awayGoals: number
+): { home: number; away: number } {
+  const total = homeGoals + awayGoals;
   if (total === 0) {
-    return { p1: 50, p2: 50 };
+    return { home: 50, away: 50 };
   }
   return {
-    p1: Math.round((p1Goals / total) * 100),
-    p2: Math.round((p2Goals / total) * 100),
+    home: Math.round((homeGoals / total) * 100),
+    away: Math.round((awayGoals / total) * 100),
   };
 }
 

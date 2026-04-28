@@ -1,4 +1,4 @@
-import type { PlayerSide, GameMode, MatchupSession, GameState } from '../types/index.js';
+import type { PlayerSide, GameMode, MatchupSession, GameState, CapSide } from '../types/index.js';
 import { initSession } from '../engine/matchup.js';
 import { prisma } from '../db/prisma.js';
 import { redis } from '../db/redis.js';
@@ -116,17 +116,17 @@ export async function updateGameState(sessionId: string, gameState: GameState): 
   );
 }
 
-export async function getCommittedMove(sessionId: string, player: 'p1' | 'p2'): Promise<string | null> {
+export async function getCommittedMove(sessionId: string, player: 'home' | 'away'): Promise<string | null> {
   return redis.get(`matchup:${sessionId}:${player}_move`);
 }
 
-export async function setCommittedMove(sessionId: string, player: 'p1' | 'p2', move: string): Promise<void> {
+export async function setCommittedMove(sessionId: string, player: 'home' | 'away', move: string): Promise<void> {
   await redis.setex(`matchup:${sessionId}:${player}_move`, 30, move);
 }
 
 export async function clearCommittedMoves(sessionId: string): Promise<void> {
-  await redis.del(`matchup:${sessionId}:p1_move`);
-  await redis.del(`matchup:${sessionId}:p2_move`);
+  await redis.del(`matchup:${sessionId}:home_move`);
+  await redis.del(`matchup:${sessionId}:away_move`);
 }
 
 export async function joinQueue(
@@ -209,7 +209,6 @@ export async function createBotSession(
   const botUserId = await ensureBotUser();
   const sessionId = crypto.randomUUID();
 
-  // User is always player1, bot is always player2
   const player1Side: PlayerSide = side;
   const player2Side: PlayerSide = side === 'home' ? 'away' : 'home';
 
@@ -230,7 +229,7 @@ export async function createBotSession(
     createdAt: new Date(),
   };
 
-  const gameState = initSession(
+  const gameState = await initSession(
     session.player1Id,
     session.player2Id!,
     fixtureId,
@@ -275,7 +274,7 @@ export async function createSession(
     createdAt: new Date(),
   };
 
-  const gameState = initSession(
+  const gameState = await initSession(
     session.player1Id,
     session.player2Id ?? 'bot',
     fixtureId,

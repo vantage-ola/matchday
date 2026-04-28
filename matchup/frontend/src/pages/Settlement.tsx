@@ -103,7 +103,6 @@ export default function Settlement() {
   const yourGoals = isPlayer1 ? result.player1Goals : result.player2Goals;
   const oppGoals = isPlayer1 ? result.player2Goals : result.player1Goals;
   const yourPayout = isPlayer1 ? settlement.player1Payout : settlement.player2Payout;
-  const oppPayout = isPlayer1 ? settlement.player2Payout : settlement.player1Payout;
   const yourScore = isPlayer1 ? settlement.player1CombinedScore : settlement.player2CombinedScore;
   const oppScore = isPlayer1 ? settlement.player2CombinedScore : settlement.player1CombinedScore;
   const stake = session.stakePerPlayer;

@@ -1,4 +1,6 @@
-import type { GameState, Move, PlayerNumber, PlayerSide } from '../types/index.js';
+import type { GameState, GameMove, CapSide, PlayerSide, SpatialResolution, AttackerMove, DefenderMove } from '../types/index.js';
+import type { MatchLineupPlayer } from '../services/football-api.js';
+import { createFormationFromLineup, getBallCarrier } from './formations.js';
 import { resolveTurn } from './resolution.js';
 import { calculateMatchupScore, calculatePayout } from './settlement.js';
 import { prisma } from '../db/prisma.js';
@@ -9,39 +11,135 @@ import { broadcastToSession } from '../ws/server.js';
 const PHASES = 6;
 const MOVES_PER_PHASE = 5;
 
-export function initSession(
+const VALID_ATTACKER_ACTIONS = ['pass', 'through_pass', 'cross', 'long_ball', 'shoot', 'run'];
+const VALID_DEFENDER_ACTIONS = ['press', 'tackle', 'intercept', 'hold_shape', 'track_back'];
+
+function distanceBetween(a: { col: number; row: number }, b: { col: number; row: number }): number {
+  const dx = b.col - a.col;
+  const dy = b.row - a.row;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function isInShootingRange(position: { col: number; row: number }, side: CapSide): boolean {
+  // Distance to the goal this side is attacking
+  const goalDistance = side === 'home' ? (14 - position.col) : position.col;
+  return goalDistance <= 4;
+}
+
+function validateMove(move: GameMove, state: GameState): string | null {
+  const attackerSide = state.attackingSide;
+  const defenderSide = attackerSide === 'home' ? 'away' : 'home';
+  
+  if (move.side === 'attacker') {
+    const attMove = move as AttackerMove;
+    const ballCarrier = getBallCarrier(state.formations[attackerSide]);
+    
+    if (ballCarrier && attMove.fromCapId !== ballCarrier.id) {
+      return 'Only the ball carrier can initiate an attack';
+    }
+    
+    if (!VALID_ATTACKER_ACTIONS.includes(attMove.action)) {
+      return 'Invalid attacker action';
+    }
+    
+    if (attMove.action === 'shoot' && !isInShootingRange(ballCarrier?.position || state.ball.position, attackerSide)) {
+      return 'Too far from goal to shoot';
+    }
+    
+    if (attMove.toPosition.col < 0 || attMove.toPosition.col > 14 || attMove.toPosition.row < 0 || attMove.toPosition.row > 8) {
+      return 'Target position is outside the pitch';
+    }
+  }
+  
+  if (move.side === 'defender') {
+    const defMove = move as DefenderMove;
+    const defenderCap = state.formations[defenderSide].caps.find(c => c.id === defMove.fromCapId);
+    
+    if (!defenderCap) {
+      return 'Invalid defender cap';
+    }
+    
+    if (!VALID_DEFENDER_ACTIONS.includes(defMove.action)) {
+      return 'Invalid defender action';
+    }
+    
+    if (defMove.action === 'tackle' && defMove.targetCapId) {
+      const targetCap = state.formations[attackerSide].caps.find(c => c.id === defMove.targetCapId);
+      if (targetCap && distanceBetween(defenderCap.position, targetCap.position) > 2) {
+        return 'Too far to tackle the target';
+      }
+    }
+  }
+  
+  return null;
+}
+
+export async function initSession(
   player1Id: string,
   player2Id: string,
   fixtureId: string,
   sessionId: string
-): GameState {
+): Promise<GameState> {
+  const fixture = await prisma.fixture.findUnique({
+    where: { id: fixtureId },
+  });
+
+  let homeLineup: MatchLineupPlayer[] = [];
+  let awayLineup: MatchLineupPlayer[] = [];
+
+  if (fixture?.external_id) {
+    try {
+      const { fetchMatchLineup } = await import('../services/football-api.js');
+      const lineupData = await fetchMatchLineup(fixture.external_id);
+      if (lineupData) {
+        homeLineup = lineupData.home.lineup;
+        awayLineup = lineupData.away.lineup;
+      }
+    } catch (e) {
+      console.log('Could not fetch lineup, trying squad fallback:', e);
+    }
+  }
+
+  // Fall back to squad data if lineup not available
+  if (fixture && (homeLineup.length === 0 || awayLineup.length === 0)) {
+    try {
+      const { fetchSquadForFixture, selectStarting11 } = await import('../services/football-api.js');
+      const squads = await fetchSquadForFixture(fixture.id);
+      if (squads.home.length > 0 && homeLineup.length === 0) {
+        homeLineup = selectStarting11(squads.home);
+      }
+      if (squads.away.length > 0 && awayLineup.length === 0) {
+        awayLineup = selectStarting11(squads.away);
+      }
+    } catch (e) {
+      console.log('Could not fetch squad, using fallback formation:', e);
+    }
+  }
+
+  const homeFormation = createFormationFromLineup('home', homeLineup);
+  const awayFormation = createFormationFromLineup('away', awayLineup);
+
+  const homeBallCarrier = getBallCarrier(homeFormation);
+  const ballCarrierCapId = homeBallCarrier?.id ?? homeFormation.caps.find(c => c.role === 'fwd')?.id ?? 'home_fwd_1';
+  const ballPosition = homeBallCarrier?.position ?? { col: 7, row: 4 };
+
   return {
     sessionId,
     phase: 1,
     totalPhases: PHASES,
     turn: 1,
     movesPerPhase: MOVES_PER_PHASE,
-    attackingPlayer: 'p1',
-    ball: { position: { col: 5, row: 5 }, carrier: 'p1' },
-    players: {
-      p1: {
-        movesRemaining: MOVES_PER_PHASE,
-        movesUsed: [],
-        position: { col: 5, row: 5 },
-        possession: true,
-      },
-      p2: {
-        movesRemaining: MOVES_PER_PHASE,
-        movesUsed: [],
-        position: { col: 5, row: 4 },
-        possession: false,
-      },
+    attackingSide: 'home',
+    ball: { position: ballPosition, carrierCapId: ballCarrierCapId },
+    formations: {
+      home: homeFormation,
+      away: awayFormation,
     },
     turnStatus: 'waiting_both',
-    score: { p1: 0, p2: 0 },
+    score: { home: 0, away: 0 },
     stats: {
-      p1: { possession: 0, tackles: 0, shots: 0, assists: 0 },
-      p2: { possession: 0, tackles: 0, shots: 0, assists: 0 },
+      home: { possession: 0, tackles: 0, shots: 0, assists: 0 },
+      away: { possession: 0, tackles: 0, shots: 0, assists: 0 },
     },
     events: [],
     lastResolution: null,
@@ -50,48 +148,50 @@ export function initSession(
 
 export async function commitMove(
   sessionId: string,
-  player: PlayerNumber,
-  move: Move
-): Promise<{ status: 'waiting_opponent' | 'resolved'; gameState: GameState; resolution?: any }> {
+  side: CapSide,
+  move: GameMove
+): Promise<{ status: 'waiting_opponent' | 'resolved'; gameState: GameState; resolution?: SpatialResolution }> {
   const state = await getGameState(sessionId);
   if (!state) {
     throw new Error('Game state not found');
   }
 
-  // Prevent race condition: don't allow concurrent resolutions
   if (state.turnStatus === 'resolving') {
     throw new Error('Turn is already being resolved');
   }
 
-  // Check if game is already complete
   if (state.phase > state.totalPhases) {
     throw new Error('Game is already complete');
   }
 
-  await setCommittedMove(sessionId, player, move);
+  const validationError = validateMove(move, state);
+  if (validationError) {
+    throw new Error(validationError);
+  }
 
-  const p1Move = await getCommittedMove(sessionId, 'p1');
-  const p2Move = await getCommittedMove(sessionId, 'p2');
+  const redisKey = side === 'home' ? 'home' : 'away';
+  await setCommittedMove(sessionId, redisKey as 'home' | 'away', JSON.stringify(move));
 
-  if (p1Move && p2Move) {
-    // Mark as resolving to prevent other commits from resolving simultaneously
+  const homeMoveStr = await getCommittedMove(sessionId, 'home');
+  const awayMoveStr = await getCommittedMove(sessionId, 'away');
+
+  if (homeMoveStr && awayMoveStr) {
     state.turnStatus = 'resolving';
     await updateGameState(sessionId, state);
 
-    const attackerMove = state.attackingPlayer === 'p1' ? p1Move as Move : p2Move as Move;
-    const defenderMove = state.attackingPlayer === 'p1' ? p2Move as Move : p1Move as Move;
+    const homeMove = JSON.parse(homeMoveStr) as GameMove;
+    const awayMove = JSON.parse(awayMoveStr) as GameMove;
 
+    const attackerMove = state.attackingSide === 'home' ? homeMove : awayMove;
+    const defenderMove = state.attackingSide === 'home' ? awayMove : homeMove;
     const resolution = await resolveTurn(sessionId, attackerMove, defenderMove, state);
 
     await clearCommittedMoves(sessionId);
 
-    // State was already saved by resolveTurn/checkPhaseTransition/endPhase
-
     return { status: 'resolved', gameState: state, resolution };
   }
 
-  // Only one player committed — update turn status
-  const newStatus = player === 'p1' ? 'waiting_p2' : 'waiting_p1';
+  const newStatus = side === 'home' ? 'waiting_away' : 'waiting_home';
   state.turnStatus = newStatus;
   await updateGameState(sessionId, state);
 
@@ -106,35 +206,25 @@ export async function endPhase(sessionId: string, state: GameState): Promise<voi
     return;
   }
 
-  // Swap attacker for new phase
-  state.attackingPlayer = state.attackingPlayer === 'p1' ? 'p2' : 'p1';
-  state.ball.carrier = state.attackingPlayer;
+  state.attackingSide = state.attackingSide === 'home' ? 'away' : 'home';
 
-  // Reset for new phase
-  state.players.p1.movesRemaining = state.movesPerPhase;
-  state.players.p2.movesRemaining = state.movesPerPhase;
-  state.players.p1.movesUsed = [];
-  state.players.p2.movesUsed = [];
+  const newBallCarrier = getBallCarrier(state.formations[state.attackingSide]);
+  state.ball.carrierCapId = newBallCarrier?.id ?? null;
+  state.ball.position = newBallCarrier?.position ?? { col: 7, row: 4 };
+
   state.turn = 1;
   state.turnStatus = 'waiting_both';
 
-  // Reset positions for new phase
-  state.ball.position = { col: 5, row: 5 };
-  state.players.p1.position = { col: 5, row: 5 };
-  state.players.p2.position = { col: 5, row: 4 };
-
   await updateGameState(sessionId, state);
 
-  // Broadcast phase transition to all connected clients
   broadcastToSession(sessionId, 'PHASE_TRANSITION', {
     newPhase: state.phase,
-    attackingPlayer: state.attackingPlayer,
+    attackingSide: state.attackingSide,
     state: state,
   });
 }
 
 export async function endMatchup(sessionId: string, state: GameState): Promise<void> {
-  // Update session status in DB
   await prisma.matchupSession.update({
     where: { id: sessionId },
     data: {
@@ -143,36 +233,36 @@ export async function endMatchup(sessionId: string, state: GameState): Promise<v
     },
   });
 
-  // Calculate total possession as percentages
-  const totalPossession = state.stats.p1.possession + state.stats.p2.possession;
-  const p1PossPct = totalPossession > 0 ? Math.round((state.stats.p1.possession / totalPossession) * 100) : 50;
-  const p2PossPct = totalPossession > 0 ? 100 - p1PossPct : 50;
-
-  // Save matchup result
-  await prisma.matchupResult.create({
-    data: {
-      session_id: sessionId,
-      player1_goals: state.score.p1,
-      player2_goals: state.score.p2,
-      player1_possession: p1PossPct,
-      player2_possession: p2PossPct,
-      player1_tackles: state.stats.p1.tackles,
-      player2_tackles: state.stats.p2.tackles,
-      player1_shots: state.stats.p1.shots,
-      player2_shots: state.stats.p2.shots,
-      player1_assists: state.stats.p1.assists,
-      player2_assists: state.stats.p2.assists,
-      player_events: JSON.stringify(state.events),
-    },
-  });
-
-  // Create settlement
   const session = await prisma.matchupSession.findUnique({
     where: { id: sessionId },
   });
 
+  const p1Side = (session?.player1_side ?? 'home') as CapSide;
+  const p2Side = (session?.player2_side ?? 'away') as CapSide;
+
+  const totalPossession = state.stats.home.possession + state.stats.away.possession;
+  const homePossPct = totalPossession > 0 ? Math.round((state.stats.home.possession / totalPossession) * 100) : 50;
+  const awayPossPct = totalPossession > 0 ? 100 - homePossPct : 50;
+
+  await prisma.matchupResult.create({
+    data: {
+      session_id: sessionId,
+      player1_goals: state.score[p1Side],
+      player2_goals: state.score[p2Side],
+      player1_possession: p1Side === 'home' ? homePossPct : awayPossPct,
+      player2_possession: p2Side === 'home' ? homePossPct : awayPossPct,
+      player1_tackles: state.stats[p1Side].tackles,
+      player2_tackles: state.stats[p2Side].tackles,
+      player1_shots: state.stats[p1Side].shots,
+      player2_shots: state.stats[p2Side].shots,
+      player1_assists: state.stats[p1Side].assists,
+      player2_assists: state.stats[p2Side].assists,
+      player_events: JSON.stringify(state.events),
+    },
+  });
+
   if (session) {
-    const matchupScores = calculateMatchupScore(state.score.p1, state.score.p2);
+    const matchupScores = calculateMatchupScore(state.score.home, state.score.away);
 
     const settlementData = calculatePayout(
       {
@@ -181,8 +271,8 @@ export async function endMatchup(sessionId: string, state: GameState): Promise<v
         fixtureId: session.fixture_id,
         player1Id: session.player1_id,
         player2Id: session.player2_id,
-        player1Side: session.player1_side as PlayerSide,
-        player2Side: session.player2_side as PlayerSide,
+        player1Side: p1Side as PlayerSide,
+        player2Side: p2Side as PlayerSide,
         stakePerPlayer: session.stake_per_player,
         pot: session.pot,
         gameMode: session.game_mode as 'matchup_only' | 'real_match',
@@ -192,90 +282,97 @@ export async function endMatchup(sessionId: string, state: GameState): Promise<v
         createdAt: session.created_at,
       },
       {
-        player1MatchupScore: matchupScores.p1,
-        player2MatchupScore: matchupScores.p2,
+        player1MatchupScore: p1Side === 'home' ? matchupScores.home : matchupScores.away,
+        player2MatchupScore: p2Side === 'home' ? matchupScores.home : matchupScores.away,
       }
     );
 
-    await prisma.settlement.create({
-      data: {
-        session_id: sessionId,
-        player1_matchup_score: settlementData.player1MatchupScore,
-        player2_matchup_score: settlementData.player2MatchupScore,
-        player1_accuracy_score: settlementData.player1AccuracyScore,
-        player2_accuracy_score: settlementData.player2AccuracyScore,
-        player1_combined_score: settlementData.player1CombinedScore,
-        player2_combined_score: settlementData.player2CombinedScore,
-        player1_payout: settlementData.player1Payout,
-        player2_payout: settlementData.player2Payout,
-        status: 'complete',
-        settled_at: new Date(),
-      },
+    const existingSettlement = await prisma.settlement.findUnique({
+      where: { session_id: sessionId },
     });
 
-    // Credit payouts to player wallets + create transaction records
+    if (!existingSettlement) {
+      await prisma.settlement.create({
+        data: {
+          session_id: sessionId,
+          player1_matchup_score: settlementData.player1MatchupScore,
+          player2_matchup_score: settlementData.player2MatchupScore,
+          player1_accuracy_score: settlementData.player1AccuracyScore,
+          player2_accuracy_score: settlementData.player2AccuracyScore,
+          player1_combined_score: settlementData.player1CombinedScore,
+          player2_combined_score: settlementData.player2CombinedScore,
+          player1_payout: settlementData.player1Payout,
+          player2_payout: settlementData.player2Payout,
+          status: 'complete',
+          settled_at: new Date(),
+        },
+      });
+    }
+
     const fixture = await prisma.fixture.findUnique({ where: { id: session.fixture_id } });
     const matchLabel = fixture ? `${fixture.home_team} vs ${fixture.away_team}` : 'Matchup';
-    const p1Won = state.score.p1 > state.score.p2;
-    const p2Won = state.score.p2 > state.score.p1;
-    const isDraw = state.score.p1 === state.score.p2;
+    const p1Goals = state.score[p1Side];
+    const p2Goals = state.score[p2Side];
+    const p1Won = p1Goals > p2Goals;
+    const p2Won = p2Goals > p1Goals;
+    const isDraw = p1Goals === p2Goals;
 
-    if (session.player1_id && (settlementData.player1Payout ?? 0) > 0) {
-      const resultLabel = p1Won ? 'Won' : isDraw ? 'Draw' : 'Lost';
+    const player1Payout = settlementData.player1Payout;
+    const player2Payout = settlementData.player2Payout;
+    const p1ResultLabel = p1Won ? 'Won' : isDraw ? 'Draw' : 'Lost';
+    const p2ResultLabel = p2Won ? 'Won' : isDraw ? 'Draw' : 'Lost';
+
+    if (session.player1_id && (player1Payout ?? 0) > 0) {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: session.player1_id },
-          data: { wallet_balance: { increment: settlementData.player1Payout ?? 0 } },
+          data: { wallet_balance: { increment: player1Payout ?? 0 } },
         }),
         prisma.transaction.create({
           data: {
             user_id: session.player1_id,
             type: 'credit',
-            amount: settlementData.player1Payout ?? 0,
-            description: `${resultLabel}: ${matchLabel}`,
+            amount: player1Payout ?? 0,
+            description: `${p1ResultLabel}: ${matchLabel}`,
             session_id: sessionId,
           },
         }),
       ]);
     }
-    if (session.player2_id && (settlementData.player2Payout ?? 0) > 0) {
-      const resultLabel = p2Won ? 'Won' : isDraw ? 'Draw' : 'Lost';
+    if (session.player2_id && (player2Payout ?? 0) > 0) {
       await prisma.$transaction([
         prisma.user.update({
           where: { id: session.player2_id },
-          data: { wallet_balance: { increment: settlementData.player2Payout ?? 0 } },
+          data: { wallet_balance: { increment: player2Payout ?? 0 } },
         }),
         prisma.transaction.create({
           data: {
             user_id: session.player2_id,
             type: 'credit',
-            amount: settlementData.player2Payout ?? 0,
-            description: `${resultLabel}: ${matchLabel}`,
+            amount: player2Payout ?? 0,
+            description: `${p2ResultLabel}: ${matchLabel}`,
             session_id: sessionId,
           },
         }),
       ]);
     }
 
-    // Update session to settled
     await prisma.matchupSession.update({
       where: { id: sessionId },
       data: { status: 'settled' },
     });
   }
 
-  // Broadcast game complete to all connected clients
   broadcastToSession(sessionId, 'MATCHUP_COMPLETE', {
     finalState: state,
     result: {
-      p1Goals: state.score.p1,
-      p2Goals: state.score.p2,
-      p1Possession: p1PossPct,
-      p2Possession: p2PossPct,
+      homeGoals: state.score.home,
+      awayGoals: state.score.away,
+      homePossession: homePossPct,
+      awayPossession: awayPossPct,
     },
   });
 
-  // Clean up Redis state
   await redis.del(`matchup:${sessionId}:state`);
   await clearCommittedMoves(sessionId);
 }
@@ -285,10 +382,8 @@ export function generateScoreline(
   playerSide: PlayerSide,
   session: { player1Side: PlayerSide }
 ): { home: number; away: number } {
-  const homePlayer = session.player1Side === 'home' ? 'p1' : 'p2';
-
   return {
-    home: homePlayer === 'p1' ? state.score.p1 : state.score.p2,
-    away: homePlayer === 'p1' ? state.score.p2 : state.score.p1,
+    home: state.score.home,
+    away: state.score.away,
   };
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GameState, Move, PlayerNumber } from '../types';
+import type { GameState, PlayerSide, GameMove } from '../types';
 
 interface AuthState {
   token: string | null;
@@ -41,15 +41,15 @@ export const useAuthStore = create<AuthState>()(
 
 interface GameStoreState {
   gameState: GameState | null;
-  playerSide: PlayerNumber | null;
-  selectedMove: Move | null;
+  playerSide: PlayerSide | null;
+  selectedMove: GameMove | null;
   opponentCommitted: boolean;
   sessionStarted: boolean;
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
 
   setGameState: (state: GameState | null) => void;
-  setPlayerSide: (side: PlayerNumber | null) => void;
-  setSelectedMove: (move: Move | null) => void;
+  setPlayerSide: (side: PlayerSide | null) => void;
+  setSelectedMove: (move: GameMove | null) => void;
   setOpponentCommitted: (committed: boolean) => void;
   setSessionStarted: (started: boolean) => void;
   setConnectionStatus: (status: GameStoreState['connectionStatus']) => void;

@@ -1,53 +1,132 @@
-import type { Move, GameState, PlayerNumber } from '../types/index.js';
+import type { GameState, GameMove, GridPosition, CapSide, PlayerCap, AttackerMove, DefenderMove } from '../types/index.js';
 import { commitMove } from './matchup.js';
 import { broadcastToSession } from '../ws/server.js';
+import { getBallCarrier, getFormationAtPosition } from './formations.js';
 
-export function getBotMove(state: GameState, botSide: PlayerNumber): Move {
-  const isAttacking = state.attackingPlayer === botSide;
-  const movesLeft = state.players[botSide].movesRemaining;
+export function getBotMove(
+  state: GameState,
+  botSide: CapSide
+): GameMove {
+  const isAttacking = state.attackingSide === botSide;
+  const formation = state.formations[botSide];
 
   if (isAttacking) {
-    const inFinalThird = state.ball.position.col > 7;
-    if (inFinalThird && movesLeft <= 2) {
-      return 'shoot';
+    const ballCarrier = getBallCarrier(formation);
+    if (!ballCarrier) {
+      const fwd = formation.caps.find(c => c.role === 'fwd');
+      return {
+        side: 'attacker',
+        fromCapId: fwd?.id ?? formation.caps[0]?.id ?? '',
+        toPosition: { col: 8, row: 4 },
+        action: 'pass',
+      };
     }
-    const rand = Math.random();
-    if (rand > 0.7) return 'long_ball';
-    if (rand > 0.4) return 'pass';
-    if (rand > 0.2) return 'run';
-    return 'sprint';
+
+    const targetFwd = formation.caps.find(c => 
+      c.role === 'fwd' && c.id !== ballCarrier.id
+    );
+
+    if (targetFwd) {
+      return {
+        side: 'attacker',
+        fromCapId: ballCarrier.id,
+        toCapId: targetFwd.id,
+        toPosition: targetFwd.position,
+        action: 'pass',
+      };
+    }
+
+    const attackDir = botSide === 'home' ? 1 : -1;
+    const goalPos = botSide === 'home' ? { col: 14, row: 4 } : { col: 0, row: 4 };
+    const distanceToGoal = Math.abs(ballCarrier.position.col - goalPos.col);
+
+    if (distanceToGoal <= 4) {
+      return {
+        side: 'attacker',
+        fromCapId: ballCarrier.id,
+        toPosition: goalPos,
+        action: 'shoot',
+      };
+    }
+
+    const mid = formation.caps.find(c => c.role === 'mid');
+    if (mid) {
+      return {
+        side: 'attacker',
+        fromCapId: ballCarrier.id,
+        toPosition: mid.position,
+        action: 'pass',
+      };
+    }
+
+    const newCol = Math.max(1, Math.min(13, ballCarrier.position.col + attackDir * 2));
+    return {
+      side: 'attacker',
+      fromCapId: ballCarrier.id,
+      toPosition: { col: newCol, row: ballCarrier.position.row },
+      action: 'run',
+    };
   } else {
-    const rand = Math.random();
-    if (rand > 0.6) return 'hold_shape';
-    if (rand > 0.3) return 'tackle';
-    return 'press';
+    const ballPos = state.ball.position;
+    const allCaps = formation.caps.filter(c => c.role !== 'gk');
+
+    const closestToBall = allCaps.reduce<PlayerCap | null>((closest, cap) => {
+      if (!closest) return cap;
+      const distCurr = Math.abs(cap.position.col - ballPos.col) + Math.abs(cap.position.row - ballPos.row);
+      const distClosest = Math.abs(closest.position.col - ballPos.col) + Math.abs(closest.position.row - ballPos.row);
+      return distCurr < distClosest ? cap : closest;
+    }, null);
+
+    if (closestToBall) {
+      const pressPos = { 
+        col: Math.max(0, Math.min(14, closestToBall.position.col + (botSide === 'home' ? -1 : 1))), 
+        row: closestToBall.position.row 
+      };
+      return {
+        side: 'defender',
+        fromCapId: closestToBall.id,
+        toPosition: pressPos,
+        action: 'press',
+      };
+    }
+
+    const def = allCaps[0];
+    if (def) {
+      return {
+        side: 'defender',
+        fromCapId: def.id,
+        toPosition: { col: def.position.col, row: def.position.row },
+        action: 'hold_shape',
+      };
+    }
+
+    return {
+      side: 'defender',
+      fromCapId: formation.caps[0]?.id ?? '',
+      toPosition: { col: 8, row: 4 },
+      action: 'hold_shape',
+    };
   }
 }
 
 export async function scheduleBotMove(
   sessionId: string,
-  botSide: PlayerNumber
+  botSide: CapSide
 ): Promise<void> {
-  // Randomised delay to feel human (1.5–3s)
   const delay = 1500 + Math.random() * 1500;
   await new Promise((resolve) => setTimeout(resolve, delay));
 
-  // Re-fetch current game state to ensure we have the latest
   const { getGameState } = await import('../services/matchmaking.js');
   const currentState = await getGameState(sessionId);
   if (!currentState) return;
 
-  // Don't commit if the game is over or already resolving
   if (currentState.phase > currentState.totalPhases) return;
   if (currentState.turnStatus === 'resolving') return;
 
-  // Check if the bot still needs to make a move for this turn
-  // If both players have committed, there's no need for another move
   const { getCommittedMove } = await import('../services/matchmaking.js');
-  const p1Move = await getCommittedMove(sessionId, 'p1');
-  const p2Move = await getCommittedMove(sessionId, 'p2');
-  if (p1Move && p2Move) {
-    // Both have committed, bot shouldn't make another move
+  const homeMove = await getCommittedMove(sessionId, 'home');
+  const awayMove = await getCommittedMove(sessionId, 'away');
+  if (homeMove && awayMove) {
     return;
   }
 
@@ -57,14 +136,11 @@ export async function scheduleBotMove(
     const result = await commitMove(sessionId, botSide, move);
 
     if (result.status === 'resolved') {
-      // CRITICAL: Broadcast the resolution to all connected clients
-      // The bot doesn't go through the WS handler, so we must broadcast here
       broadcastToSession(sessionId, 'TURN_RESOLVED', {
         gameState: result.gameState,
         resolution: result.resolution,
       });
 
-      // If the game is still going, schedule the next bot move
       if (result.gameState.phase <= result.gameState.totalPhases) {
         scheduleBotMove(sessionId, botSide).catch((err) => {
           console.error('Failed to schedule next bot move:', err);
@@ -72,7 +148,6 @@ export async function scheduleBotMove(
       }
     }
   } catch (error) {
-    // Ignore "already resolving" errors - they're expected in race conditions
     if (error instanceof Error && error.message.includes('already being resolved')) {
       return;
     }

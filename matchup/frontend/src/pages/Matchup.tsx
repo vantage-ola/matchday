@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { GameState, Resolution, Move } from '../types';
+import type { GameState, PlayerSide, GameMove, SpatialResolution } from '../types';
 import { GameLayout } from '@/components/layouts';
 import Pitch from '@/components/Pitch';
 import MoveSelector from '@/components/MoveSelector';
@@ -11,12 +11,10 @@ import { api } from '@/lib/api';
 import { socket } from '@/lib/socket';
 import { useAuthStore, useGameStore } from '@/lib/store';
 import { Skeleton } from '@/components/ui/skeleton';
-import { normalizeColors, type TeamColors } from '@/lib/team-colors';
+import { type TeamColors } from '@/lib/team-colors';
+import { resolveCapName, PHASE_NAMES } from '@/lib/game-utils';
 
 const MOVE_TIMER_SECONDS = 10;
-
-const ATTACK_MOVES: Move[] = ['pass', 'long_ball', 'run', 'sprint', 'shoot'];
-const DEFEND_MOVES: Move[] = ['hold_shape', 'press', 'tackle'];
 
 interface SessionData {
   id: string;
@@ -38,6 +36,8 @@ interface SessionData {
   homeTeamColors?: TeamColors;
   awayTeamColors?: TeamColors;
   league?: string;
+  homeTeamApiId?: number;
+  awayTeamApiId?: number;
 }
 
 export default function Matchup() {
@@ -50,54 +50,34 @@ export default function Matchup() {
     selectedMove, 
     setSelectedMove, 
     opponentCommitted, 
-    setOpponentCommitted 
+    setOpponentCommitted,
+    playerSide,
+    setPlayerSide,
   } = useGameStore();
   
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionData | null>(null);
-  const [resolution, setResolution] = useState<Resolution | null>(null);
+  const [resolution, setResolution] = useState<SpatialResolution | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [moveLockedIn, setMoveLockedIn] = useState(false);
-  const [playerSide, setPlayerSide] = useState<'p1' | 'p2'>('p1');
   const [moveTimer, setMoveTimer] = useState(MOVE_TIMER_SECONDS);
   const [lastEvent, setLastEvent] = useState<string | null>(null);
   const hasConnected = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Team identity
-  const yourTeam = session
-    ? playerSide === 'p1'
-      ? session.player1Side === 'home' ? session.homeTeam : session.awayTeam
-      : session.player2Side === 'home' ? session.homeTeam : session.awayTeam
-    : 'YOUR TEAM';
-  const oppTeam = session
-    ? playerSide === 'p1'
-      ? session.player1Side === 'home' ? session.awayTeam : session.homeTeam
-      : session.player2Side === 'home' ? session.awayTeam : session.homeTeam
-    : 'OPPONENT';
-
   const yourColors: TeamColors = session?.homeTeamColors && session?.awayTeamColors
-    ? (playerSide === 'p1'
-        ? (session.player1Side === 'home' ? session.homeTeamColors : session.awayTeamColors)
-        : (session.player2Side === 'home' ? session.homeTeamColors : session.awayTeamColors))
-    : { primary: '#14532d', secondary: '#ffffff', text: '#ffffff' };
+    ? (playerSide === 'home' ? session.homeTeamColors : session.awayTeamColors)
+    : { primary: '#2563eb', secondary: '#ffffff', text: '#ffffff' };
   const oppColors: TeamColors = session?.homeTeamColors && session?.awayTeamColors
-    ? (playerSide === 'p1'
-        ? (session.player1Side === 'home' ? session.awayTeamColors : session.homeTeamColors)
-        : (session.player2Side === 'home' ? session.awayTeamColors : session.homeTeamColors))
-    : { primary: '#111111', secondary: '#cccccc', text: '#ffffff' };
-  const yourAbbr = session?.homeTeamAbbr && session?.awayTeamAbbr
-    ? (playerSide === 'p1'
-        ? (session.player1Side === 'home' ? session.homeTeamAbbr : session.awayTeamAbbr)
-        : (session.player2Side === 'home' ? session.homeTeamAbbr : session.awayTeamAbbr))
-    : 'YOU';
-  const oppAbbr = session?.homeTeamAbbr && session?.awayTeamAbbr
-    ? (playerSide === 'p1'
-        ? (session.player1Side === 'home' ? session.awayTeamAbbr : session.homeTeamAbbr)
-        : (session.player2Side === 'home' ? session.awayTeamAbbr : session.homeTeamAbbr))
-    : 'OPP';
+    ? (playerSide === 'home' ? session.awayTeamColors : session.homeTeamColors)
+    : { primary: '#dc2626', secondary: '#ffffff', text: '#ffffff' };
+  const yourAbbr = playerSide === 'home'
+    ? (session?.homeTeamAbbr || 'YOU')
+    : (session?.awayTeamAbbr || 'YOU');
+  const oppAbbr = playerSide === 'home'
+    ? (session?.awayTeamAbbr || 'OPP')
+    : (session?.homeTeamAbbr || 'OPP');
 
-  // ─── Move timer ─────────────────────────────────────────────────────
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     setMoveTimer(MOVE_TIMER_SECONDS);
@@ -120,28 +100,55 @@ export default function Matchup() {
     }
   }, []);
 
-  // Auto-commit random move when timer expires
   useEffect(() => {
-    if (moveTimer === 0 && !moveLockedIn && !isCommitting && gameState) {
-      const isAttacking = gameState.attackingPlayer === playerSide;
-      const validMoves = isAttacking ? ATTACK_MOVES : DEFEND_MOVES;
-      // Filter out shoot if not in final third
-      const available = validMoves.filter((m) => {
-        if (m === 'shoot' && isAttacking && gameState.ball.position.col < 7) return false;
-        return true;
-      });
-      const randomMove = available[Math.floor(Math.random() * available.length)];
-      setSelectedMove(randomMove);
+    if (moveTimer === 0 && !moveLockedIn && !isCommitting && gameState && playerSide) {
+      const isAttacking = gameState.attackingSide === playerSide;
 
-      // Give a tiny delay so the UI shows which move was auto-selected
-      setTimeout(() => {
-        setIsCommitting(true);
-        socket.commitMove(randomMove);
-      }, 300);
+      if (isAttacking) {
+        const ballCarrier = gameState.ball.carrierCapId;
+        if (ballCarrier) {
+          const forward = playerSide === 'home' ? 1 : -1;
+          const fromPos = gameState.ball.position;
+          const toPos = {
+            col: Math.max(0, Math.min(14, fromPos.col + 2 * forward)),
+            row: fromPos.row,
+          };
+
+          const move: GameMove = {
+            side: 'attacker',
+            fromCapId: ballCarrier,
+            toPosition: toPos,
+            action: 'run',
+          };
+
+          setSelectedMove(move);
+          setTimeout(() => {
+            setIsCommitting(true);
+            socket.commitMove(move);
+          }, 300);
+        }
+      } else {
+        // Defender auto-submit: hold_shape with a defender
+        const yourFormation = playerSide === 'home' ? gameState.formations.home : gameState.formations.away;
+        const defender = yourFormation.caps.find(c => c.role === 'def') || yourFormation.caps[0];
+        if (defender) {
+          const move: GameMove = {
+            side: 'defender',
+            fromCapId: defender.id,
+            toPosition: defender.position,
+            action: 'hold_shape',
+          };
+
+          setSelectedMove(move);
+          setTimeout(() => {
+            setIsCommitting(true);
+            socket.commitMove(move);
+          }, 300);
+        }
+      }
     }
   }, [moveTimer, moveLockedIn, isCommitting, gameState, playerSide, setSelectedMove]);
 
-  // Start timer on new turn, stop when locked in
   useEffect(() => {
     if (gameState && !moveLockedIn && !isCommitting && gameState.turnStatus !== 'resolving') {
       startTimer();
@@ -150,7 +157,6 @@ export default function Matchup() {
     }
   }, [gameState?.turn, gameState?.phase, moveLockedIn, isCommitting, startTimer, stopTimer]);
 
-  // Cleanup
   useEffect(() => {
     return () => stopTimer();
   }, [stopTimer]);
@@ -164,9 +170,9 @@ export default function Matchup() {
       
       const sessionData = data.session as SessionData;
       if (user && sessionData.player1Id === user.id) {
-        setPlayerSide('p1');
-      } else {
-        setPlayerSide('p2');
+        setPlayerSide(sessionData.player1Side as PlayerSide);
+      } else if (user && sessionData.player2Id === user.id) {
+        setPlayerSide(sessionData.player2Side as PlayerSide);
       }
       
       if (data.gameState) {
@@ -178,7 +184,7 @@ export default function Matchup() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, token, navigate, setGameState, user]);
+  }, [sessionId, token, navigate, setGameState, setPlayerSide, user]);
 
   const connectWebSocket = useCallback(() => {
     if (!sessionId || !token || hasConnected.current) return;
@@ -194,17 +200,15 @@ export default function Matchup() {
       setOpponentCommitted(true);
     });
 
-    socket.on('MOVE_COMMITTED', () => {
+    socket.on('MOVE_COMMITTED', (_payload: { playerSide: PlayerSide; turnStatus: string }) => {
       setMoveLockedIn(true);
       setIsCommitting(false);
       stopTimer();
     });
 
-    socket.on('TURN_RESOLVED', (payload: { resolution: Resolution; gameState: GameState }) => {
-      // Stop any running timer and clear the interval to prevent double-counting
+    socket.on('TURN_RESOLVED', (payload: { resolution: SpatialResolution; gameState: GameState }) => {
       stopTimer();
       setMoveTimer(MOVE_TIMER_SECONDS);
-
       setResolution(payload.resolution);
       setGameState(payload.gameState);
       setIsCommitting(false);
@@ -212,31 +216,39 @@ export default function Matchup() {
       setSelectedMove(null);
       setOpponentCommitted(false);
 
-      // Set event description
       const r = payload.resolution;
-      const isYourAction = r.scorer === playerSide || (!r.possessionChange && !r.goalScored);
       if (r.goalScored) {
-        setLastEvent(r.scorer === playerSide ? `GOAL — ${yourAbbr} scored` : `GOAL — ${oppAbbr} scored`);
+        setLastEvent(`GOAL — ${r.scorerCapId} scored!`);
       } else if (r.outcome === 'tackle') {
-        setLastEvent(isYourAction ? `TACKLE — ${oppAbbr} won the ball` : `TACKLE — ${yourAbbr} won the ball`);
+        setLastEvent(`TACKLE — Ball won`);
       } else if (r.outcome === 'intercept') {
-        setLastEvent(r.possessionChange ? `INTERCEPTED — Possession lost` : `ADVANCE — Ball moved forward`);
-      } else if (r.outcome === 'advance') {
-        setLastEvent(`ADVANCE — Ball moved forward`);
+        setLastEvent(r.possessionChange ? `INTERCEPTED — Possession lost` : `ADVANCE`);
+      } else if (r.outcome === 'through') {
+        setLastEvent(`THROUGH PASS — Ball moved forward`);
+      } else if (r.outcome === 'press_won') {
+        setLastEvent(`PRESS — Won the ball`);
+      } else if (r.outcome === 'goal') {
+        setLastEvent(`GOAL!`);
       } else if (r.outcome === 'save') {
         setLastEvent(`SAVE — Shot stopped`);
       } else if (r.outcome === 'miss') {
-        setLastEvent(`MISS — Shot went wide`);
+        setLastEvent(`MISS — Shot wide`);
+      } else if (r.outcome === 'blocked') {
+        setLastEvent(`BLOCKED — Shot blocked`);
+      } else if (r.outcome === 'wide') {
+        setLastEvent(`WIDE — Missed`);
+      } else {
+        setLastEvent(`ADVANCE`);
       }
     });
 
-    socket.on('PHASE_TRANSITION', (payload: { newPhase: number; attackingPlayer: string; state: GameState }) => {
+    socket.on('PHASE_TRANSITION', (payload: { newPhase: number; attackingSide: PlayerSide; state: GameState }) => {
       setGameState(payload.state);
-      const youAttacking = payload.attackingPlayer === playerSide;
-      setLastEvent(`PHASE ${payload.newPhase} — ${youAttacking ? 'You are attacking' : 'You are defending'}`);
+      const youAttacking = payload.attackingSide === playerSide;
+      setLastEvent(`PHASE ${payload.newPhase} — ${youAttacking ? 'You attack' : 'You defend'}`);
     });
 
-    socket.on('MATCHUP_COMPLETE', (payload: { finalState: GameState }) => {
+    socket.on('MATCHUP_COMPLETE', (payload: { finalState: GameState; result: { homeGoals: number; awayGoals: number } }) => {
       setGameState(payload.finalState);
       stopTimer();
       setTimeout(() => {
@@ -254,7 +266,7 @@ export default function Matchup() {
     });
 
     socket.on('BOT_SUBSTITUTED', () => {
-      setLastEvent('Bot substituted for disconnected opponent');
+      setLastEvent('Bot substituted for opponent');
     });
 
     socket.on('CONNECTION_STATUS', (status) => {
@@ -263,7 +275,7 @@ export default function Matchup() {
         setLastEvent('Disconnected — reconnecting...');
       }
     });
-  }, [sessionId, token, navigate, setGameState, setOpponentCommitted, setSelectedMove, playerSide, yourAbbr, oppAbbr, stopTimer]);
+  }, [sessionId, token, navigate, setGameState, setOpponentCommitted, setSelectedMove, playerSide, stopTimer, setLastEvent]);
 
   useEffect(() => {
     if (sessionId && token) {
@@ -295,11 +307,15 @@ export default function Matchup() {
     }
   };
 
-  const handleResolutionComplete = () => {
+  const handleResolutionComplete = useCallback(() => {
     setResolution(null);
-  };
+  }, []);
 
-  if (loading || !gameState) {
+  const handleMoveSelect = useCallback((move: GameMove) => {
+    setSelectedMove(move);
+  }, [setSelectedMove]);
+
+  if (loading || !gameState || !playerSide) {
     return (
       <GameLayout>
         <main className="flex flex-col md:flex-row h-full w-full">
@@ -325,12 +341,9 @@ export default function Matchup() {
     );
   }
 
-  const isAttacking = gameState.attackingPlayer === playerSide;
-
   return (
     <GameLayout>
       <main className="flex flex-col md:flex-row h-full w-full">
-        {/* Pitch section */}
         <section className="w-full md:w-[70%] h-[55%] md:h-full flex flex-col bg-surface">
           <ScoreBar
             gameState={gameState}
@@ -352,10 +365,12 @@ export default function Matchup() {
               oppColors={oppColors}
               yourAbbr={yourAbbr}
               oppAbbr={oppAbbr}
+              selectedMove={selectedMove}
+              onMoveSelect={handleMoveSelect}
+              disabled={!!resolution || gameState.turnStatus === 'resolving'}
             />
           </div>
 
-          {/* Status bar with event feed */}
           <div className="h-10 md:h-11 bg-surface-container-lowest/80 backdrop-blur-sm hairline-t flex items-center justify-between px-4">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               {lastEvent ? (
@@ -383,15 +398,12 @@ export default function Matchup() {
           </div>
         </section>
 
-        {/* Move selector */}
         <MoveSelector
           selectedMove={selectedMove}
-          onSelect={setSelectedMove}
+          onSelect={handleMoveSelect}
           onCommit={handleCommit}
           disabled={isCommitting || moveLockedIn || gameState.turnStatus === 'resolving'}
           moveLockedIn={moveLockedIn}
-          playerState={gameState.players[playerSide]}
-          isAttacking={isAttacking}
           gameState={gameState}
           playerSide={playerSide}
           moveTimer={moveTimer}
@@ -399,7 +411,6 @@ export default function Matchup() {
           yourColors={yourColors}
         />
 
-        {/* Resolution overlay */}
         {resolution && (
           <ResolutionOverlay
             resolution={resolution}
