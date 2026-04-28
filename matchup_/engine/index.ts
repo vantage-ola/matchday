@@ -1,4 +1,4 @@
-import type { GameState, MoveResult, Outcome, MovePhase, Player, GridPosition, Team, GameStatus } from './types.js';
+import type { GameState, MoveResult, Outcome, MovePhase, Player, GridPosition, Team, GameStatus, MoveType } from './types.js';
 import {
   initGameState,
   getPlayer,
@@ -9,19 +9,20 @@ import {
   getFormation,
   FORMATIONS,
   GAME_DURATION,
+  resetPositions,
 } from './formations.js';
 
-const MOVE_TIME = 10; // seconds per move
 import {
   validateMove,
   canMoveTo,
+  classifyMove,
+  checkInterception,
   getAttackDirection,
+  canTackle,
 } from './moves.js';
-import { isGoalPosition } from './types.js';
+import { isGoalPosition, rowToNum, gridDistance } from './types.js';
 
-function rowToNum(row: string): number {
-  return row.charCodeAt(0) - 'a'.charCodeAt(0);
-}
+const MOVE_TIME = 10; // seconds per move
 
 export { listFormations, getFormation, FORMATIONS };
 
@@ -29,7 +30,7 @@ export class Engine {
   private state: GameState;
 
   constructor(state?: GameState) {
-    this.state = state || initGameState();
+    this.state = state ? JSON.parse(JSON.stringify(state)) : initGameState();
   }
 
   getState(): GameState {
@@ -57,6 +58,10 @@ export class Engine {
   }
 
   applyMove(playerId: string, to: GridPosition): MoveResult {
+    if (this.state.status !== 'playing') {
+      return { valid: false, outcome: 'blocked', newState: this.getState() };
+    }
+
     const player = getPlayer(this.state, playerId);
     if (!player) {
       return { valid: false, outcome: 'blocked', newState: this.getState() };
@@ -69,197 +74,187 @@ export class Engine {
 
     const ballCarrier = getBallCarrier(this.state);
     const hasBall = ballCarrier?.id === player.id;
+    const moveType = classifyMove(this.state, player, to);
 
     let outcome: Outcome = 'success';
     let scored = false;
     let possessionChange = false;
-    let newState = JSON.parse(JSON.stringify(this.state)) as GameState;
+    let moveTypeLabel: MoveType = 'move';
 
+    // Deep clone for mutation
+    const newState = JSON.parse(JSON.stringify(this.state)) as GameState;
     const mover = newState.players.find((p) => p.id === playerId);
     if (!mover) {
-      return { valid: false, outcome: 'blocked', newState: this.state };
+      return { valid: false, outcome: 'blocked', newState: this.getState() };
     }
 
-    const attackDir = getAttackDirection(player.team);
-    const targetGoal = player.team === 'home' ? 22 : 1;
-    const isShooting = hasBall && to.col === targetGoal && to.row >= 'e' && to.row <= 'g';
+    // ---- HANDLE EACH MOVE TYPE ----
 
-    if (isShooting) {
-      const defenders = getTeamPlayers(this.state, player.team === 'home' ? 'away' : 'home').filter((d) => d.role !== 'gk');
-      const nearGoal = defenders.filter((d) => {
-        const dist = Math.sqrt(
-          Math.pow(d.position.col - to.col, 2) +
-            Math.pow(rowToNum(d.position.row) - rowToNum(to.row), 2)
-        );
-        return dist < 2;
-      });
+    if (moveType === 'shoot') {
+      moveTypeLabel = 'shoot';
+      const targetGoal = player.team === 'home' ? 22 : 1;
+      const isOnTarget = to.col === targetGoal && to.row >= 'e' && to.row <= 'g';
 
-      if (nearGoal.length > 0) {
-        outcome = 'blocked';
+      if (!isOnTarget) {
+        // Shot off target — possession lost
+        outcome = 'miss';
         possessionChange = true;
         mover.hasBall = false;
-        const defender = nearGoal[0];
-        const defPlayer = newState.players.find((p) => p.id === defender.id);
-        if (defPlayer) {
-          defPlayer.hasBall = true;
-        }
+        // Nearest opponent gets the ball (goalkeeper if nearby, otherwise closest)
+        const opponents = newState.players.filter(
+          (p) => p.team !== player.team
+        );
+        const gk = opponents.find((p) => p.role === 'gk');
+        // Give to GK for simplicity on a miss
+        if (gk) gk.hasBall = true;
       } else {
-        outcome = 'goal';
-        scored = true;
-        newState.score[player.team]++;
-
-        // After goal: like football — ball goes to the team that was scored on
-        // Reset both teams to starting positions, ball goes to scoring-on team at kickoff spot
-        newState.players.forEach((p) => {
-          p.hasBall = false;
-          // Reset to default formation positions
-          const team = p.team;
-          if (team === 'home') {
-            if (p.role === 'gk') p.position = { col: 1, row: 'f' };
-            else if (p.role === 'def') p.position = { col: 3, row: p.position.row };
-            else if (p.role === 'mid') p.position = { col: 6, row: p.position.row };
-            else if (p.role === 'fwd') p.position = { col: 9, row: p.position.row };
-          } else {
-            if (p.role === 'gk') p.position = { col: 22, row: 'f' };
-            else if (p.role === 'def') p.position = { col: 20, row: p.position.row };
-            else if (p.role === 'mid') p.position = { col: 17, row: p.position.row };
-            else if (p.role === 'fwd') p.position = { col: 14, row: p.position.row };
-          }
+        // On target — check if defenders block
+        const defenders = newState.players.filter(
+          (d) => d.team !== player.team && d.role !== 'gk'
+        );
+        const nearGoal = defenders.filter((d) => {
+          return gridDistance(d.position, to) < 2;
         });
 
-        // Conceding team gets the ball at their kickoff forward position
-        const concedingTeam = player.team === 'home' ? 'away' : 'home';
-        const kickoffFwd = newState.players.find(
-          (p) => p.team === concedingTeam && p.role === 'fwd' && p.position.col === (concedingTeam === 'home' ? 9 : 14)
-        );
-        if (kickoffFwd) {
-          kickoffFwd.hasBall = true;
-        }
-
-        // Check for half-time
-        if (newState.timeRemaining <= GAME_DURATION / 2 && newState.timeRemaining > GAME_DURATION / 2 - 30) {
-          newState.status = 'halfTime';
-        }
-      }
-    } else if (hasBall) {
-      const target = getPlayerAt(this.state, to);
-      if (target && target.team === player.team && target.id !== player.id) {
-        const intercept = this.checkInterception(player.position, to, player.team);
-        if (intercept.intercepted) {
-          outcome = 'intercepted';
+        if (nearGoal.length > 0) {
+          outcome = 'blocked';
           possessionChange = true;
-          const intPlayer = newState.players.find(
-            (p) => p.id === intercept.interceptorId
-          );
-          if (intPlayer) {
-            intPlayer.hasBall = true;
-          }
-          // Clear ball from passer
           mover.hasBall = false;
+          const blocker = newState.players.find((p) => p.id === nearGoal[0].id);
+          if (blocker) blocker.hasBall = true;
         } else {
-          mover.hasBall = false;
-          const targetP = newState.players.find((p) => p.id === target.id);
-          if (targetP) {
-            targetP.hasBall = true;
+          // GOAL
+          outcome = 'goal';
+          scored = true;
+          newState.score[player.team]++;
+
+          // Reset all players to formation positions
+          resetPositions(newState);
+
+          // Conceding team gets kickoff
+          const concedingTeam = player.team === 'home' ? 'away' : 'home';
+          newState.possession = concedingTeam;
+          const kickoffFwd = newState.players.find(
+            (p) => p.team === concedingTeam && p.role === 'fwd'
+          );
+          if (kickoffFwd) {
+            kickoffFwd.hasBall = true;
+          } else {
+            // Fallback: any player on conceding team
+            const fallback = newState.players.find(
+              (p) => p.team === concedingTeam
+            );
+            if (fallback) fallback.hasBall = true;
           }
+
+          newState.moveNumber = 1;
+          newState.movePhase = 'attack';
         }
-      } else {
-        mover.position = { ...to };
       }
+
+    } else if (moveType === 'pass') {
+      moveTypeLabel = 'pass';
+      const targetPlayer = newState.players.find(
+        (p) => p.position.col === to.col && p.position.row === to.row
+      );
+
+      // Check interception against pre-move state
+      const intercept = checkInterception(
+        this.state,
+        player.position,
+        to,
+        player.team
+      );
+
+      if (intercept.intercepted && intercept.interceptorId) {
+        outcome = 'intercepted';
+        possessionChange = true;
+        mover.hasBall = false;
+        const intPlayer = newState.players.find(
+          (p) => p.id === intercept.interceptorId
+        );
+        if (intPlayer) intPlayer.hasBall = true;
+        // Passer stays in place, interceptor stays in place, ball transfers
+      } else if (targetPlayer) {
+        // Clean pass — passer stays, receiver gets ball
+        mover.hasBall = false;
+        targetPlayer.hasBall = true;
+      }
+
+    } else if (moveType === 'tackle') {
+      moveTypeLabel = 'tackle';
+      outcome = 'tackled';
+      possessionChange = true;
+
+      // Swap positions: tackler goes to carrier's spot, carrier displaced to tackler's origin
+      const tacklerOrigPos = { ...mover.position };
+      mover.position = { ...to };
+
+      const formerCarrier = newState.players.find(
+        (p) => p.id === ballCarrier!.id
+      );
+      if (formerCarrier) {
+        formerCarrier.position = tacklerOrigPos;
+        formerCarrier.hasBall = false;
+      }
+      mover.hasBall = true;
+
     } else {
+      // dribble or off-ball run
+      moveTypeLabel = 'move';
       mover.position = { ...to };
     }
 
+    // ---- UPDATE BALL POSITION ----
     const newBallCarrier = newState.players.find((p) => p.hasBall);
     if (newBallCarrier) {
       newState.ball = { ...newBallCarrier.position };
       newState.ballCarrierId = newBallCarrier.id;
     } else {
+      // Should not happen in normal flow, but guard against it
       newState.ball = { col: 0, row: 'a' };
       newState.ballCarrierId = null;
     }
 
+    // ---- UPDATE POSSESSION & MOVE COUNT ----
     if (possessionChange || scored) {
-      newState.possession = newState.possession === 'home' ? 'away' : 'home';
+      if (!scored) {
+        // Don't override possession if we already set it in goal handling
+        newState.possession =
+          newState.possession === 'home' ? 'away' : 'home';
+      }
       newState.moveNumber = 1;
       newState.movePhase = 'attack';
-    } else if (hasBall) {
-      if (newState.moveNumber >= 3) {
-        newState.possession = newState.possession === 'home' ? 'away' : 'home';
-        newState.moveNumber = 1;
-        newState.movePhase = 'attack';
-      } else {
-        newState.moveNumber++;
-      }
     } else {
-      if (newState.moveNumber >= 3) {
+      newState.moveNumber++;
+      // After 3 moves, possession flips (shared budget for both teams)
+      if (newState.moveNumber > 3) {
+        newState.possession =
+          newState.possession === 'home' ? 'away' : 'home';
         newState.moveNumber = 1;
         newState.movePhase = 'attack';
-      } else {
-        newState.moveNumber++;
       }
     }
 
-    // Update time remaining
+    // ---- UPDATE TIME ----
     newState.timeRemaining = Math.max(0, newState.timeRemaining - MOVE_TIME);
 
-    // Check for game over
-    if (newState.timeRemaining <= 0 && newState.status === 'playing') {
+    // ---- GAME END ----
+    if (newState.timeRemaining <= 0) {
       newState.status = 'fullTime';
     }
 
+    // Commit
     this.state = newState;
 
     return {
       valid: true,
-      move: { playerId, from: player.position, to, type: 'move' },
+      move: { playerId, from: player.position, to, type: moveTypeLabel },
       outcome,
       newState: this.getState(),
       scored,
       possessionChange,
     };
-  }
-
-  private checkInterception(
-    from: GridPosition,
-    to: GridPosition,
-    passingTeam: Team
-  ): { intercepted: boolean; interceptorId: string | null } {
-    const defenders = getTeamPlayers(this.state, passingTeam === 'home' ? 'away' : 'home');
-
-    const passLen = Math.sqrt(
-      Math.pow(to.col - from.col, 2) +
-        Math.pow(rowToNum(to.row) - rowToNum(from.row), 2
-    ));
-
-    if (passLen < 0.1) return { intercepted: false, interceptorId: null };
-
-    for (const def of defenders) {
-      const t = Math.max(
-        0,
-        Math.min(
-          1,
-          ((def.position.col - from.col) * (to.col - from.col) +
-            (rowToNum(def.position.row) - rowToNum(from.row)) *
-              (rowToNum(to.row) - rowToNum(from.row))) /
-            (passLen * passLen)
-        )
-      );
-
-      const projCol = from.col + t * (to.col - from.col);
-      const projRow = rowToNum(from.row) + t * (rowToNum(to.row) - rowToNum(from.row));
-
-      const dist = Math.sqrt(
-        Math.pow(def.position.col - projCol, 2) +
-          Math.pow(rowToNum(def.position.row) - projRow, 2)
-      );
-
-      if (dist < 1.2) {
-        return { intercepted: true, interceptorId: def.id };
-      }
-    }
-
-    return { intercepted: false, interceptorId: null };
   }
 
   static init(

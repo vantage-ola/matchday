@@ -2,8 +2,14 @@ import { GameState, Player, Role } from './types.js';
 import { getBallCarrier } from './formations.js';
 
 const ROWS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'];
-
 const ROLE_LABEL: Record<Role, string> = { gk: 'GK', def: 'DEF', mid: 'MID', fwd: 'FWD' };
+
+const CELL_WIDTH = 3;
+
+function padCell(s: string): string {
+  while (s.length < CELL_WIDTH) s += ' ';
+  return s;
+}
 
 export function renderPitch(state: GameState): string {
   const players = state.players;
@@ -32,15 +38,15 @@ export function renderPitch(state: GameState): string {
         const label = player.role === 'gk' ? 'GK' : player.role[0].toUpperCase();
         const team = player.team === 'home' ? 'H' : 'A';
         const ballMark = player.hasBall ? '*' : '';
-        cells.push(team + label + ballMark);
+        cells.push(padCell(team + label + ballMark));
       } else if (isBallHere) {
-        cells.push('(*)');
+        cells.push(padCell('(*)'));
       } else if (isHomeGoal || isAwayGoal) {
-        cells.push('▓▓▓');
+        cells.push(padCell('▓▓▓'));
       } else if (isMidline) {
-        cells.push(' │ ');
+        cells.push(padCell('│'));
       } else {
-        cells.push(' · ');
+        cells.push(padCell('·'));
       }
     }
 
@@ -55,21 +61,20 @@ export function renderPitch(state: GameState): string {
   lines.push('        ══════════════════════════════════');
   lines.push('        (home goal: col 1)    (away goal: col 22)');
   lines.push('');
-  lines.push('  Legend: H=home(A=away)  *=ball  ▓=goal  D/M/F=def/mid/fwd');
+  lines.push('  Legend: H=home A=away *=ball ▓=goal D=def M=mid F=fwd');
 
   return lines.join('\n');
 }
 
 export function renderStatus(state: GameState): string {
   const bc = getBallCarrier(state);
-  const movePhase = state.movePhase === 'attack' ? 'ATTACK' : 'DEFEND';
   const possession = state.possession.toUpperCase();
   const minsLeft = Math.floor(state.timeRemaining / 60);
   const secsLeft = state.timeRemaining % 60;
   const timeStr = minsLeft + ':' + secsLeft.toString().padStart(2, '0');
 
   const scoreLine = (state.score.home + ' - ' + state.score.away).padEnd(24);
-  const phaseLine = ('Phase ' + state.phase + ', ' + movePhase + ' (' + possession + ')').padEnd(24);
+  const phaseLine = ('Move ' + state.moveNumber + '/3 (' + possession + ' with ball)').padEnd(24);
   const timeLine = (timeStr + (state.status !== 'playing' ? ' [' + state.status + ']' : '')).padEnd(24);
   const ballLine = bc ? bc.name + ' at ' + state.ball.row + state.ball.col : 'none';
 
@@ -97,12 +102,16 @@ export function renderTurnSummary(
     summary += '→ GOAL! HOME scores!\n';
   } else if (scoredAway) {
     summary += '→ GOAL! AWAY scores!\n';
-  } else if (state.possession !== prevState.possession) {
-    summary += '→ Possession: ' + state.possession.toUpperCase() + '\n';
   }
 
-  const movePhase = state.movePhase === 'attack' ? 'ATTACK' : 'DEFEND';
-  summary += 'Score: ' + state.score.home + ' - ' + state.score.away + '  |  Phase ' + state.phase + ', ' + movePhase + ' (' + state.possession.toUpperCase() + ')';
+  if (state.possession !== prevState.possession) {
+    if (!scoredHome && !scoredAway) {
+      summary += '→ Possession: ' + state.possession.toUpperCase() + '\n';
+    }
+  }
+
+  const possession = state.possession.toUpperCase();
+  summary += 'Score: ' + state.score.home + ' - ' + state.score.away + '  |  Move ' + state.moveNumber + '/3 (' + possession + ')';
 
   return summary;
 }

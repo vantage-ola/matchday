@@ -210,6 +210,24 @@ export function listFormations(): { name: keyof typeof FORMATIONS; description: 
   }));
 }
 
+/**
+ * Reset all players to their formation base positions and clear ball.
+ * Used after goals and at half-time.
+ */
+export function resetPositions(state: GameState): void {
+  const homePreset = FORMATIONS[state.homeFormation].home;
+  const awayPreset = FORMATIONS[state.awayFormation].away;
+
+  for (const player of state.players) {
+    player.hasBall = false;
+    const preset = player.team === 'home' ? homePreset : awayPreset;
+    const base = preset.find((p) => p.id === player.id);
+    if (base) {
+      player.position = { ...base.position };
+    }
+  }
+}
+
 export function initGameState(
   homeFormation?: keyof typeof FORMATIONS,
   awayFormation?: keyof typeof FORMATIONS
@@ -225,10 +243,10 @@ export function initGameState(
     ...awayPreset.away.map((p) => ({ ...p, hasBall: false })),
   ];
 
+  // Give ball to first forward on home team
   const fwd1 = allPlayers.find((p) => p.team === 'home' && p.role === 'fwd');
   if (fwd1) {
-    const idx = allPlayers.findIndex((p) => p.id === fwd1.id);
-    if (idx >= 0) allPlayers[idx].hasBall = true;
+    fwd1.hasBall = true;
   }
 
   const ballCarrier = allPlayers.find((p) => p.hasBall);
@@ -244,6 +262,8 @@ export function initGameState(
     score: { home: 0, away: 0 },
     timeRemaining: GAME_DURATION,
     status: 'playing',
+    homeFormation: homeName,
+    awayFormation: awayName,
   };
 }
 

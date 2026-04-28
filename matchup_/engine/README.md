@@ -1,328 +1,145 @@
-# Matchup Engine — Technical Specification
+```markdown
+# ⚽ Matchup Engine
 
-## 1. Grid & Pitch
+A deterministic, turn-based tactical football (soccer) engine written in pure TypeScript. Designed to power 1v1 hot-seat multiplayer, tactical puzzles, or AI-simulated matches.
 
-```
-22 columns × 11 rows (a-k)
-
-        HOME attacks → → → → → → →          AWAY
-        ══════════════════════════════════
- A   ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  │  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
- B   ·  · HD ·  ·  ·  ·  ·  ·  ·  │  ·  ·  ·  ·  ·  ·  ·  · AD ·  ·
- C   ·  ·  ·  ·  · HM ·  ·  ·  ·  │  ·  ·  ·  ·  · AM ·  ·  ·  ·  ·
- D   ·  · HD ·  ·  ·  ·  · HF* ·  │  ·  · AF ·  ·  ·  ·  · AD ·  ·
- E ▓▓▓▓ ·  ·  ·  · HM ·  ·  ·  ·  │  ·  ·  ·  ·  · AM ·  ·  ·  · ▓▓▓▓
- F ▓HGK ·  ·  ·  ·  ·  ·  · HF ·  │  ·  · AF ·  ·  ·  ·  ·  ·  · AGK▓
- G ▓▓▓▓ ·  ·  ·  ·  ·  ·  ·  ·  ·  │  ·  ·  ·  ·  ·  ·  ·  ·  ·  · ▓▓▓▓
- H   ·  · HD ·  ·  ·  ·  · HF ·  │  ·  · AF ·  ·  ·  ·  · AD ·  ·
- I   ·  ·  ·  ·  · HM ·  ·  ·  ·  │  ·  ·  ·  ·  · AM ·  ·  ·  ·  ·
- J   ·  · HD ·  ·  ·  ·  ·  ·  ·  │  ·  ·  ·  ·  ·  ·  ·  · AD ·  ·
- K   ·  ·  ·  ·  ·  ·  ·  ·  ·  ·  │  ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
-        ══════════════════════════════════
-
-Column 1:   HOME GOAL (rows e, f, g)
-Column 11:  Midfield line
-Column 22:  AWAY GOAL (rows e, f, g)
-
-Rows a-k: a (top) to k (bottom)
-- Goals span rows e, f, g (3 rows)
-- Ball starts at f11: row f, col 11 (center)
-- HGK = Home Goalkeeper, HD = Home Defender, HM = Home Mid, HF = Home Forward
-- * = has ball
-```
-22 columns × 11 rows (a-k)
-
-     a  b  c  d  e  f  g  h  i  j  k
-  1  .  .  .  .  █  █  █  .  .  .  .  ← GOAL (home, e1-g1)
-  2  .  .  .  .  .  .  .  .  .  .  .
-  3  .  .  .  .  .  .  .  .  .  .  .
-  4  .  .  .  .  .  .  .  .  .  .  .
-  5  .  .  .  .  .  .  ●  .  .  .  .  ← ball starts at f11
-  6  .  .  .  .  .  .  .  .  .  .  .
-  7  .  .  .  .  .  .  .  .  .  .  .
-  8  .  .  .  .  .  .  .  .  .  .  .
-  9  .  .  .  .  .  .  .  .  .  .  .
- 10  .  .  .  .  .  █  █  █  .  .  .  .  ← GOAL (away, e22-g22)
- 11  .  .  .  .  .  .  .  .  .  .  .
-
-Column 1:   HOME GOAL (rows e, f, g) ← defends here
-Column 11:  Home's attacking third / front line
-Column 12:  Away's attacking third / front line
-Column 22:   AWAY GOAL (rows e, f, g) ← defends here
-
-Rows a-k: a (top) to k (bottom)
-- Goals span rows e, f, g (3 rows = 9 feet, like real goal)
-- Ball starts at f11: row f, col 11 (center, front line)
-
-Row letters: a (top) to k (bottom)
-- Goals span rows e, f, g (3 rows tall)
-```
-
-## 2. Players
-
-- 11 players per team (GK + 10 outfield)
-- Each player occupies exactly one grid cell
-- Player IDs: `home_gk`, `home_def1`...`home_def4`, `home_mid1`...`home_mid4`, `home_fwd1`...`home_fwd2`
-- Same for away: `away_gk`, `away_def1`, etc.
-
-### Default Formations (4-3-3)
-
-**Home (columns 1-11, facing right →):**
-```
-col 1:  home_gk (in goal)
-col 3:  home_def1, home_def2, home_def3, home_def4
-col 6:  home_mid1, home_mid2, home_mid3
-col 9:  home_fwd1, home_fwd2
-```
-
-**Away (columns 12-22, facing left ←):**
-```
-col 22: away_gk (in goal)
-col 20: away_def1, away_def2, away_def3, away_def4
-col 17: away_mid1, away_mid2, away_mid3
-col 14: away_fwd1, away_fwd2
-```
-
-### Ball Starting Position
-
-Ball starts at `f11` (row f, col 11) — the center-forward position of the home team.
+Unlike real-time physics engines, Matchup treats football like a strategy game. The pitch is a 22x11 grid. Players take turns moving, passing, shooting, and tackling within strict, mathematically defined rules.
 
 ---
 
-## 3. Movement Rules
+## 📖 How It Works
 
-### 3.1 Direction of Play
+### The Pitch
+The game takes place on a grid:
+* **Columns:** 1 to 22 (Home defends Col 1, attacks Col 22).
+* **Rows:** `a` to `k` (Top to bottom).
+* **Goals:** Span rows `e`, `f`, `g` at Col 1 (Home) and Col 22 (Away).
 
-- **Home** always attacks toward **column 22** (right)
-- **Away** always attacks toward **column 1** (left)
+### Possession & Turns
+* **3-Move Rule:** Possession is shared. Each phase allows exactly 3 moves. Either team can use these moves (e.g., Home passes, Away tackles, Home shoots). After 3 moves, if possession hasn't changed hands via a tackle or interception, it automatically flips to the other team.
+* **10-Second Ticks:** Every single move drains 10 seconds from the match clock. A full game lasts 60 moves (10 simulated minutes).
 
-### 3.2 Ball Carrier Rules
+### Move Types
+The engine automatically classifies your intended move based on context:
+1. **Dribble:** Move the ball carrier to an empty cell (Max 2 cells). Cannot go backward.
+2. **Pass:** Target a teammate's cell (Max 7 cells). *Backward passes are allowed* to relieve pressure.
+3. **Shoot:** Target the goal column when in range (Max 3 cells). Can miss wide or be blocked by nearby defenders.
+4. **Off-Ball Run:** Move a player without the ball into an empty space (Max 3 cells). Can move in any direction.
+5. **Tackle:** Move a defender onto the opposing ball carrier's cell (Max 2 cells). **Positions swap** (tackler takes the ball spot, carrier is pushed back to where the tackler was), and possession flips immediately.
 
-The player **holding the ball** (`hasBall: true`) can:
-
-1. **Move forward** — advance toward opponent's goal
-   - Home: column +n (n > 0)
-   - Away: column -n (n > 0)
-
-2. **Move sideways** — same column, different row (a↔b↔c...)
-
-3. **Pass** — transfer ball to another player
-   - Target must be in front or same column
-   - Target cannot be behind the ball carrier
-   - Pass travels in a straight line (no curve)
-
-4. **Shoot** — attempt on goal
-   - Must be in shooting range (within 3 columns of goal)
-   - Shot targets the goal area (rows e-f-g at opponent's goal line)
-
-### 3.3 Non-Ball Carrier Rules (Teammates)
-
-Can move to:
-- Any position in same column
-- Any position in column ahead (relative to their team's attack direction)
-- Any position in column behind ONLY IF they're moving to support a pass
-
-### 3.4 Defender Rules
-
-Defenders (opponent without ball) can:
-
-1. **Move forward** — toward the ball (pressing)
-2. **Move sideways** — track the attacker
-3. **Move backward** — fall back to defensive shape (NOT toward own goal — they're already facing the ball)
-
-**All players face forward** — they can only see/intercept passes that come through their forward-facing cone.
-
-### 3.5 Movement Constraints
-
-```
-BLOCKED MOVES:
-- Ball carrier cannot move backward (behind their current column)
-- Defenders cannot move past the ball (cannot go behind ball carrier)
-- Cannot occupy a cell already taken by teammate OR opponent
-- Cannot move outside 1-22 (columns) or a-k (rows)
-
-NOTE: All occupied cells block movement. You cannot "dribble through" a defender —
-you must pass around them or move to an empty space. This is realistic football:
-attackers need to maneuver around defenders, not through them.
-```
+### Interceptions
+When a pass is made, the engine draws an invisible line from the passer to the receiver. If an opposing defender is within `1.2` grid units of this line, the pass is intercepted and possession flips.
 
 ---
 
-## 4. The Play Structure (3 Moves Each)
+## ✅ What It Does
 
-Each "play" consists of:
-
-### Phase 1: Attack Team's Turn (up to 3 moves)
-
-The team with possession gets **3 moves**. They can:
-
-1. **Move ball carrier** — forward or sideways
-2. **Pass** — to teammate in front/same column
-3. **Move teammate** — reposition for next pass
-
-The attack ends when:
-- They score a goal
-- They run out of 3 moves
-- They lose the ball (interception/tackle)
-
-### Phase 2: Defense Team's Turn (up to 3 moves)
-
-The team without possession gets **3 moves** to contest. They can:
-
-1. **Press** — move toward the ball carrier
-2. **Mark** — cover potential pass targets
-3. **Intercept** — position in passing lanes
-
-The defense ends when:
-- They win the ball (tackle/interception)
-- The attack scores
-- They run out of 3 moves (possession retained)
+* **100% Deterministic:** Given the same starting state and inputs, it produces the exact same results every time.
+* **6 Formations:** `4-3-3`, `4-4-2`, `3-5-2`, `5-3-2`, `4-2-3-1`, `3-4-3`.
+* **Strict Validation:** Prevents teleporting, backward dribbling, moving through players, and shooting from distance.
+* **Built-in Simulation Harness:** Includes an `aggressiveStrategy` AI and a `Simulator` class to run matches to completion and generate structured match reports.
+* **Terminal Renderer:** Built-in ASCII pitch renderer for debugging and CLI games.
 
 ---
 
-## 5. Interception & Tackle Mechanics
+## 🚫 What It Does NOT Do (Yet)
 
-### 5.1 Line of Sight
-
-A pass is **interceptable** if ANY defender is on the straight line between:
-
-- Pass start position (ball carrier)
-- Pass end position (teammate)
-
-```
-Detection: Point-to-point line intersection with defender position
-Threshold: defender within 1 cell radius of the pass line
-```
-
-### 5.2 Pressing
-
-If a defender moves to the same cell as the ball carrier (or adjacent), they can **press**:
-- Check distance: ≤1 cell from ball carrier
-- Press success chance: 60% base + (0-40 based on positioning)
-
-### 5.3 Tackle
-
-If defender moves TO the ball carrier's cell while carrier tries to move:
-- Only valid if defender starts their move BEFORE ball carrier
-- Tackle success chance: 50% base + positioning bonus
+* **Real-time physics:** There are no velocities, momentum, or curved shots. It is strictly grid-based.
+* **Player Stats:** Currently, all players are identical except for their role. There is no "Pace" or "Shooting" attribute (yet).
+* **Offside Rules:** Not implemented.
+* **Simultaneous Movement:** Players act one at a time.
 
 ---
 
-## 6. Outcomes
+## 🎮 Frontend Integration (1v1 Co-op)
 
-### 6.1 Possession Retention
+To build a frontend (React, Vue, Vanilla JS) for two physical players sharing a screen, you don't need to write any game logic. You only need to build a UI that loops through this state machine:
 
-Attack completes 3 moves → ball stays with attack team → new play begins
+### The Game Loop
 
-### 6.2 Possession Change
-
-- **Interception**: defender catches the pass → ball flips to them
-- **Tackle**: defender wins ball → ball flips to them
-- **Save**: shot saved by GK or defender → ball released
-
-### 6.3 Goal Scored
-
-- Shot goes into goal area (e-g, opponent goal column)
-- No defender blocks it
-- Goal confirmed
-
----
-
-## 7. Data Structures
-
+#### 1. Initialize the Game
+When the player clicks "Start Match", initialize the engine.
 ```typescript
-interface GridPosition {
-  col: number;  // 1-22
-  row: string;  // 'a'-'k'
-}
+import { Engine, getValidMoves } from 'matchup_/engine';
 
-interface Player {
-  id: string;           // 'home_gk', 'home_def1', etc.
-  name: string;        // 'Onana', 'Konate', etc.
-  role: Role;          // 'gk' | 'def' | 'mid' | 'fwd'
-  team: Team;          // 'home' | 'away'
-  position: GridPosition;
-  hasBall: boolean;
-}
-
-interface GameState {
-  players: Player[];   // 22 players total
-  ball: GridPosition;  // Current ball position (dupe for convenience)
-  ballCarrierId: string | null;
-
-  possession: Team;     // 'home' | 'away'
-  turn: number;        // 1, 2, 3 (current move in play)
-  movePhase: 'attack' | 'defense';
-
-  score: { home: number; away: number };
-  history: TurnRecord[];
-}
-
-interface TurnRecord {
-  moveNumber: number;    // 1, 2, or 3 within the play
-  phase: 'attack' | 'defense';
-  team: Team;
-  moveType: 'move' | 'pass' | 'shoot' | 'tackle' | 'intercept';
-  positions: MovePositions;
-  outcome: Outcome;
-}
+const engine = Engine.init('4-3-3', '4-4-2'); 
+let currentState = engine.getState();
 ```
 
----
+#### 2. Render the Pitch
+Loop through `currentState.players` and `currentState.ball` to render your SVG/Canvas/CSS grid. Color code by `player.team` and highlight `player.hasBall === true`.
 
-## 8. API Design
-
+#### 3. Handle Player Selection
+When a user clicks a player on the pitch:
 ```typescript
-// Core engine functions
-Engine.init(formtionHome: Formation, formationAway: Formation): GameState
-Engine.commitMove(state: GameState, move: Move): MoveResult
-Engine.checkInterception(state: GameState, passFrom: Pos, passTo: Pos): InterceptionResult
-Engine.resolvePlay(state: GameState): PlayResult
+// Ensure they clicked a player on the team that currently has possession
+if (clickedPlayer.team !== currentState.possession) return; 
 
-// Types
-type Role = 'gk' | 'def' | 'mid' | 'fwd'
-type Team = 'home' | 'away'
-type MoveType = 'move' | 'pass' | 'shoot'
-type Outcome = 'success' | 'intercepted' | 'blocked' | 'tackled' | 'goal' | 'miss'
+// Ask the engine what this player can do
+const validMoves = getValidMoves(currentState, currentState.possession)
+  .filter(m => m.playerId === clickedPlayer.id);
+
+// Highlight these cells on your frontend UI
+highlightCells(validMoves.map(m => m.to)); 
+```
+
+#### 4. Execute the Move
+When the user clicks a highlighted valid cell:
+```typescript
+const result = engine.applyMove(clickedPlayer.id, targetCell);
+
+// result.outcome tells you what happened:
+// 'success' -> normal move
+// 'tackled' -> show a tackle animation, possession flips
+// 'intercepted' -> show interception animation
+// 'goal' -> show goal screen/animation!
+// 'miss' / 'blocked' -> show failed shot animation
+
+// Update your UI state
+currentState = result.newState;
+```
+
+#### 5. Handle Goal Kicks / Turnovers
+If `result.outcome === 'goal'`, the engine automatically resets all players to their base formation positions and gives the ball to the conceding team. Your frontend just needs to detect this state change and smoothly reset the player positions on screen.
+
+---
+
+## 🧠 API Quick Reference
+
+### `Engine`
+The core state machine.
+* `new Engine(state?)` / `Engine.init(home, away)`: Create a game instance.
+* `engine.getState(): GameState`: Returns a deep-cloned snapshot of the game (safe to store in React state).
+* `engine.applyMove(playerId, to): MoveResult`: The single source of truth for executing actions.
+* `engine.getBallCarrier(): Player`: Quick helper to find who has the ball.
+
+### `getValidMoves(state, team)`
+**This is the most important function for frontend devs.** 
+It calculates all legal moves for a team based on the current board state, respecting distances, backward rules, and tackle ranges. You do not need to calculate this yourself.
+
+### `Simulator`
+For AI vs AI or background simulations.
+* `new Simulator({ homeFormation, awayFormation, verbose: true }).run()`: Plays a full game and returns a `SimulationResult` containing an array of `MatchEvent` objects (goals, tackles, etc.).
+
+---
+
+## 🛠️ Developer Setup
+
+```bash
+# Install (if using npm/yarn)
+npm install
+
+# Run the test suite (96 tests)
+bun run test
+
+# Run a simulated match in your terminal
+bun run simulate
 ```
 
 ---
 
-## 9. Edge Cases
-
-1. **Crowded square**: Two players try to occupy same cell → invalid move, request retry
-2. **Pass to self**: Pass to same position → treated as "move" instead
-3. **All paths blocked**: Ball carrier has no valid moves → turnover
-4. **GK in play**: GK can receive pass but cannot carry ball forward past midfield
-5. **Simultaneous moves**: Two players move to same cell → attacker wins, defender blocked
-6. **Out of bounds**: Pass to off-grid → treated as miss
-7. **Zero moves left**: Possession flips, turn resets to 1
-
----
-
-## 10. Future Considerations (Out of Scope for v1)
-
-- Half-time / full-time structure
-- Penalty shootouts
-- Free kicks / corners / throw-ins
-- Real-time mode (seconds per move)
-- AI evaluation
-- Formation presets
-- Player ratings
-- Commentary / events log
-- Animated visualization
-
----
-
-## 11. File Structure
-
-```
-matchup_/engine/
-├── index.ts          # Engine entry point
-├── types.ts         # All interfaces
-├── state.ts         # GameState management
-├── moves.ts         # Move validation
-├── resolution.ts   # Interception/tackle logic
-├── formations.ts    # Default formations
-└── README.md        # This file
-```
+## 🗺️ Roadmap
+* [ ] **Player Attributes:** Adding speed, passing accuracy, and tackle success rates.
+* [ ] **Stamina/Fatigue:** Moves cost more energy based on distance.
+* [ ] **Set Pieces:** Corner kicks and free kicks.
+* [ ] **WebSocket Server:** A tiny wrapper to allow `Engine` instances to be hosted and synced for online 1v1 multiplayer.
