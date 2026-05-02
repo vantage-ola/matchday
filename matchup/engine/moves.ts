@@ -7,6 +7,7 @@ import {
   MAX_DRIBBLE_DIST,
   MAX_PASS_DIST,
   MAX_RUN_DIST,
+  MAX_PURSUIT_DIST,
   MAX_TACKLE_DIST,
   MAX_SHOT_DIST,
   INTERCEPT_RADIUS,
@@ -104,18 +105,19 @@ export function canMoveTo(
     }
   }
   
-  // STRICT OPEN RECEIVER CHECK
+  // OPEN RECEIVER CHECK: 2+ markers within 1 cell (Chebyshev) block the pass
   if (moveType === 'pass') {
     const target = getPlayerAt(state, to);
     if (target) {
       const oppTeam = player.team === 'home' ? 'away' : 'home';
-      const isMarked = state.players.some(p => {
-        if (p.team !== oppTeam) return false;
-        // Check 1-cell radius (Chebyshev distance)
-        return Math.abs(p.position.col - target.position.col) <= 1 && 
-               Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
-      });
-      if (isMarked) return false;
+      const markerCount = state.players.reduce((n, p) => {
+        if (p.team !== oppTeam) return n;
+        const close =
+          Math.abs(p.position.col - target.position.col) <= 1 &&
+          Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
+        return close ? n + 1 : n;
+      }, 0);
+      if (markerCount >= 2) return false;
     }
   }
 
@@ -126,7 +128,16 @@ export function canMoveTo(
     case 'pass':     return dist <= MAX_PASS_DIST;
     case 'shoot':    return dist <= MAX_SHOT_DIST;
     case 'tackle':   return dist <= MAX_TACKLE_DIST;
-    case 'run':      return dist <= MAX_RUN_DIST;
+    case 'run': {
+      if (dist > MAX_RUN_DIST) return false;
+      // Pursuit cap: off-ball runs that close on the ball-carrier are limited
+      if (ballCarrier && ballCarrier.team !== player.team) {
+        const before = gridDistance(player.position, ballCarrier.position);
+        const after = gridDistance(to, ballCarrier.position);
+        if (after < before && dist > MAX_PURSUIT_DIST) return false;
+      }
+      return true;
+    }
     default:         return false;
   }
 }
@@ -185,12 +196,14 @@ export function validateMove(
       const target = getPlayerAt(state, to);
       if (target) {
         const oppTeam = player.team === 'home' ? 'away' : 'home';
-        const isMarked = state.players.some(p => {
-          if (p.team !== oppTeam) return false;
-          return Math.abs(p.position.col - target.position.col) <= 1 && 
-                 Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
-        });
-        if (isMarked) return { valid: false, error: 'Receiver is marked (1-cell rule)' };
+        const markerCount = state.players.reduce((n, p) => {
+          if (p.team !== oppTeam) return n;
+          const close =
+            Math.abs(p.position.col - target.position.col) <= 1 &&
+            Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
+          return close ? n + 1 : n;
+        }, 0);
+        if (markerCount >= 2) return { valid: false, error: 'Receiver is marked (2+ defenders within 1 cell)' };
       }
     }
 
@@ -214,6 +227,14 @@ export function validateMove(
 
     if (dist > maxDist) {
       return { valid: false, error: `Too far: ${dist} cells (max ${maxDist} for ${moveType})` };
+    }
+
+    if (moveType === 'run' && ballCarrier && ballCarrier.team !== player.team) {
+      const before = gridDistance(player.position, ballCarrier.position);
+      const after = gridDistance(to, ballCarrier.position);
+      if (after < before && dist > MAX_PURSUIT_DIST) {
+        return { valid: false, error: `Pursuit cap: closing on the ball is limited to ${MAX_PURSUIT_DIST} cell` };
+      }
     }
 
     return { valid: false, error: 'Invalid move' };
@@ -242,7 +263,6 @@ export function checkInterception(
     Math.pow(rowToNum(to.row) - rowToNum(from.row), 2);
 
   if (passLenSq < 0.01) return { intercepted: false, interceptorId: null };
-  const passLen = Math.sqrt(passLenSq);
 
   for (const def of defenders) {
     // Project defender onto the pass line segment

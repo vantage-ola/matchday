@@ -523,6 +523,64 @@ const apTimeBefore = apGame10.getState().timeRemaining;
 apGame10.endTurn();
 assert(apGame10.getState().timeRemaining === apTimeBefore, 'endTurn should not deduct time');
 
+console.log('\n=== PURSUIT CAP TESTS ===\n');
+
+// Pursuit Test 1: off-ball run capped at MAX_RUN_DIST (2 cells)
+const purGame1 = Engine.init('4-3-3');
+const purState1 = purGame1.getState();
+const purHomeMid = purState1.players.find(p => p.id === 'home_mid1')!;
+// Move away from carrier so any run isn't a pursuit. Carrier is at col 14ish.
+const farFromCarrier = { col: purHomeMid.position.col, row: 'a' };
+const purEngine1 = new Engine(purState1);
+// AP setup: home has ball but for off-ball home midfielder to move requires possession
+// We test the validator directly by attempting a 3-cell sideways run far from the carrier
+const purHomeMid1 = purEngine1.getPlayer(purHomeMid.id)!;
+const farRow = String.fromCharCode(purHomeMid1.position.row.charCodeAt(0) + 3);
+const purResult1 = purEngine1.applyMove(purHomeMid1.id, { col: purHomeMid1.position.col, row: farRow });
+assert(purResult1.valid === false, 'Run of 3 cells should now be rejected (MAX_RUN_DIST=2)');
+
+// Pursuit Test 2: an off-ball move that closes on the ball-carrier is capped at 1 cell
+const purGame2 = Engine.init('4-3-3');
+const purState2 = purGame2.getState();
+const carrier2 = purState2.players.find(p => p.hasBall)!;
+const awayDef2 = purState2.players.find(p => p.id === 'away_def2')!;
+// Place defender 4 cols away from carrier on a different row so target cell is empty
+awayDef2.position = { col: carrier2.position.col + 4, row: 'a' };
+// Force possession to away so the defender can move
+purState2.possession = 'away';
+purState2.actionPoints = 3;
+const purEngine2 = new Engine(purState2);
+// Run 2 cells closer toward the carrier; before-dist = 4, after-dist = 2 -> closer & dist=2 > 1 -> reject
+const closeTarget = { col: awayDef2.position.col - 2, row: 'a' };
+const purResult2 = purEngine2.applyMove(awayDef2.id, closeTarget);
+assert(purResult2.valid === false, 'Off-ball pursuit should be capped at 1 cell when closing on the ball');
+
+// Pursuit Test 3: same defender can still pursue 1 cell closer
+const purGame3 = Engine.init('4-3-3');
+const purState3 = purGame3.getState();
+const carrier3 = purState3.players.find(p => p.hasBall)!;
+const awayDef3 = purState3.players.find(p => p.id === 'away_def2')!;
+awayDef3.position = { col: carrier3.position.col + 4, row: 'a' };
+purState3.possession = 'away';
+purState3.actionPoints = 3;
+const purEngine3 = new Engine(purState3);
+const oneCloser = { col: awayDef3.position.col - 1, row: 'a' };
+const purResult3 = purEngine3.applyMove(awayDef3.id, oneCloser);
+assert(purResult3.valid === true, 'Off-ball 1-cell pursuit run should be allowed');
+
+// Pursuit Test 4: moving 2 cells AWAY from the carrier is still allowed
+const purGame4 = Engine.init('4-3-3');
+const purState4 = purGame4.getState();
+const carrier4 = purState4.players.find(p => p.hasBall)!;
+const awayDef4 = purState4.players.find(p => p.id === 'away_def2')!;
+awayDef4.position = { col: carrier4.position.col + 4, row: 'a' };
+purState4.possession = 'away';
+purState4.actionPoints = 3;
+const purEngine4 = new Engine(purState4);
+const twoAway = { col: awayDef4.position.col + 2, row: 'a' };
+const purResult4 = purEngine4.applyMove(awayDef4.id, twoAway);
+assert(purResult4.valid === true, 'Retreating 2 cells from the carrier should still be allowed');
+
 console.log('\n=== SUMMARY ===');
 console.log(`Passed: ${pass}/${pass + fail}`);
 if (fail > 0) console.log(`Failed: ${fail}`);

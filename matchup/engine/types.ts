@@ -60,7 +60,8 @@ export const COLS = 22;
 // Move distance limits
 export const MAX_DRIBBLE_DIST = 2;
 export const MAX_PASS_DIST = 7;
-export const MAX_RUN_DIST = 3;
+export const MAX_RUN_DIST = 2;
+export const MAX_PURSUIT_DIST = 1;
 export const MAX_TACKLE_DIST = 2;
 export const MAX_SHOT_DIST = 3;
 

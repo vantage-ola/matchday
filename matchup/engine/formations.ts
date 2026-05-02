@@ -1,6 +1,6 @@
 import type { Player, FormationName, GridPosition, Team, GameState, GameStatus } from './types.js';
 
-export const GAME_DURATION = 600; // 10 minutes in seconds
+export const GAME_DURATION = 3600; // 60 minutes in seconds
 
 export interface FormationPreset {
   name: FormationName;

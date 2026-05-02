@@ -13,8 +13,6 @@ function formatTime(seconds: number): string {
 }
 
 export function ScoreBar({ state, homeFormation, awayFormation }: ScoreBarProps) {
-  const elapsed = 600 - state.timeRemaining;
-
   return (
     <div className="flex h-14 items-center justify-between rounded-lg bg-card px-4 text-card-foreground">
       <div className="flex items-center gap-2">

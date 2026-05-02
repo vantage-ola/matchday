@@ -6,7 +6,7 @@ Turn-based football strategy on a 22×11 grid. Two teams of 11 take turns moving
 
 ```
 matchup/
-├── engine/        # Pure TypeScript game engine (114 tests)
+├── engine/        # Pure TypeScript game engine (118 tests)
 ├── simulation/    # AI strategies + AI vs AI runner
 └── web/           # React 19 + Vite + shadcn/ui frontend
 old/               # Previous prototype — ignore

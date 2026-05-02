@@ -3,6 +3,7 @@ import { visualizeGame } from '../engine/render.js';
 import type { GameState, Team, GridPosition, MoveResult, FormationName } from '../engine/types.js';
 import { validateMove } from '../engine/moves.js';
 import { ROWS, MAX_RUN_DIST } from '../engine/types.js';
+import { GAME_DURATION } from '../engine/formations.js';
 
 // --- TYPES ---
 
@@ -269,7 +270,7 @@ export class Simulator {
       console.log('   No goals.');
     } else {
       for (const g of goals) {
-        const mins = Math.floor((600 - g.time) / 60);
+        const mins = Math.floor((GAME_DURATION - g.time) / 60);
         console.log(`   ${mins}'  ${g.team.toUpperCase()} - ${g.description}`);
       }
     }

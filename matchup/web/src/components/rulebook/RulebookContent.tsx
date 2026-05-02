@@ -4,7 +4,7 @@ export function RulebookContent() {
       <section className="space-y-2">
         <h2 className="text-base font-bold uppercase tracking-wide">The goal</h2>
         <p className="text-muted-foreground">
-          Score more than your opponent before the 10-minute clock runs out. Every action ticks 10 seconds off.
+          Score more than your opponent before the 60-minute clock runs out. Every action ticks 10 seconds off.
         </p>
       </section>
 
@@ -35,7 +35,7 @@ export function RulebookContent() {
         <ul className="space-y-1 text-muted-foreground">
           <li>• <span className="font-bold text-foreground">Dribble</span> — ball carrier moves up to 2 cells. Forward or sideways only.</li>
           <li>• <span className="font-bold text-foreground">Pass</span> — ball carrier sends ball to a teammate up to 7 cells away.</li>
-          <li>• <span className="font-bold text-foreground">Run</span> — off-ball player moves up to 3 cells.</li>
+          <li>• <span className="font-bold text-foreground">Run</span> — off-ball player moves up to 2 cells. Closing on the ball-carrier is capped at 1 cell.</li>
           <li>• <span className="font-bold text-foreground">Shoot</span> — must be within 3 cells of the opponent goal.</li>
           <li>• <span className="font-bold text-foreground">Tackle</span> — non-ball player steps onto the carrier within 2 cells.</li>
         </ul>

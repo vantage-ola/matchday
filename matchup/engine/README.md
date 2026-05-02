@@ -34,7 +34,7 @@ The engine automatically classifies your intended move based on context:
 1. **Dribble:** Move the ball carrier to an empty cell (Max 2 cells). Cannot go backward.
 2. **Pass:** Target a teammate's cell (Max 7 cells). *Backward passes are allowed* to relieve pressure.
 3. **Shoot:** Target the goal column when in range (Max 3 cells). Can miss wide or be blocked by nearby defenders.
-4. **Off-Ball Run:** Move a player without the ball into an empty space (Max 3 cells). Can move in any direction.
+4. **Off-Ball Run:** Move a player without the ball into an empty space (Max 2 cells). Can move in any direction. **Pursuit cap:** if the run lands closer to the opposing ball-carrier, it is limited to 1 cell — no leaping in to tackle from distance.
 5. **Tackle:** Move a defender onto the opposing ball carrier's cell (Max 2 cells). **Positions swap** (tackler takes the ball spot, carrier is pushed back to where the tackler was), and possession flips immediately.
 
 ### Interceptions
@@ -136,7 +136,7 @@ For AI vs AI or background simulations.
 ## 🛠️ Developer Setup
 
 ```bash
-# Run the test suite (114 tests)
+# Run the test suite (118 tests)
 bun matchup/engine/test.ts
 
 # Run a simulated match in your terminal

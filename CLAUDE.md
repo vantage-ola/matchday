@@ -18,7 +18,7 @@ matchup/
 │   ├── formations.ts   # 6 formation presets, state init, player/ball queries
 │   ├── moves.ts        # Move validation (direction, bounds, occupied cells)
 │   ├── render.ts       # CLI ASCII pitch renderer + status display
-│   ├── test.ts         # 114-test suite with custom assert runner
+│   ├── test.ts         # 118-test suite with custom assert runner
 │   └── README.md       # Full technical spec
 ├── simulation/
 │   ├── simulate.ts     # AI strategies, getValidMoves(), Simulator class
@@ -36,7 +36,7 @@ matchup/
 ## Commands
 
 ```bash
-bun matchup/engine/test.ts           # Run engine test suite (114 tests)
+bun matchup/engine/test.ts           # Run engine test suite (118 tests)
 bun matchup/simulation/run.ts        # Run AI vs AI simulation
 bun --cwd matchup/web dev            # Start web dev server
 bun --cwd matchup/web build          # Production build
@@ -86,6 +86,7 @@ Each `applyMove` call:
 - **No cell sharing**: occupied cells block movement.
 - **Passing**: ball carrier to teammate, straight line, max 7 cells.
 - **Open receiver**: pass blocked if **2+ defenders** sit within 1 cell of the target.
+- **Off-ball runs**: max 2 cells. **Pursuit cap**: if the run lands closer to the ball-carrier than it started, it is capped at 1 cell — stops cross-pitch leap-and-tackle.
 - **Shooting**: must be within 3 cells of opponent goal.
 
 ### Key Types
@@ -106,8 +107,8 @@ GameStatus: 'playing' | 'halfTime' | 'fullTime' | 'abandoned'
 Six presets: `4-3-3`, `4-4-2`, `3-5-2`, `5-3-2`, `4-2-3-1`, `3-4-3`. Each defines exact grid positions for 11 home + 11 away players. Player IDs follow pattern: `home_gk`, `home_def1`...`home_def4`, `home_mid1`...etc.
 
 ### Time Model
-- 600 seconds total (10 minutes)
-- 10 seconds per move → ~60 moves max
+- 3600 seconds total (60 minutes)
+- 10 seconds per move → ~360 moves max
 - Half-time detection around the midpoint
 - `fullTime` when timeRemaining hits 0
 
