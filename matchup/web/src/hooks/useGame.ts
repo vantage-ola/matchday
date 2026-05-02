@@ -168,6 +168,18 @@ export function useGame() {
     setSelectedPlayerMoves(new Set());
   }, []);
 
+  const endTurn = useCallback(() => {
+    if (!engineRef.current || !state || isAiThinking) return;
+    if (state.possession !== 'home' && mode === 'ai') return;
+    engineRef.current.endTurn();
+    const newState = syncState();
+    if (!newState) return;
+    if (checkGameOver(newState)) return;
+    if (mode === 'ai' && newState.possession === 'away' && newState.status === 'playing') {
+      playAiTurn();
+    }
+  }, [state, isAiThinking, mode, syncState, checkGameOver, playAiTurn]);
+
   const resetGame = useCallback(() => {
     if (aiTimerRef.current) {
       clearTimeout(aiTimerRef.current);
@@ -198,6 +210,7 @@ export function useGame() {
     selectPlayer,
     executeMove,
     deselectPlayer,
+    endTurn,
     resetGame,
   };
 }

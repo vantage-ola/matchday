@@ -238,23 +238,23 @@ assert(r21.valid === false, 'Teammate should not be able to tackle own ball carr
 
 console.log('\n=== POSSESSION & TURN TESTS ===\n');
 
-// Test 22: After 1 move, possession flips
-// Test 22: Successful dribble keeps possession
+// Test 22: Successful dribble keeps possession (AP cost 2 leaves 1)
 const game22 = Engine.init();
 const bc22 = game22.getBallCarrier()!;
 const initPoss22 = game22.getState().possession;
 game22.applyMove(bc22.id, { col: bc22.position.col + 1, row: bc22.position.row });
 const after22 = game22.getState();
 assert(after22.possession === initPoss22, `Successful dribble should KEEP possession`);
-assert(after22.moveNumber === 1, `Move number should reset to 1, got ${after22.moveNumber}`);
+assert(after22.actionPoints === 1, `After dribble, AP should be 1, got ${after22.actionPoints}`);
 
-// Test 22b: Off-ball run flips possession
+// Test 22b: Off-ball run keeps possession but spends 1 AP
 const game22b = Engine.init();
 const offBall22b = game22b.getTeam('home').find(p => !p.hasBall)!;
 const initPoss22b = game22b.getState().possession;
 game22b.applyMove(offBall22b.id, { col: offBall22b.position.col + 1, row: offBall22b.position.row });
 const after22b = game22b.getState();
-assert(after22b.possession !== initPoss22b, `Off-ball run should FLIP possession`);
+assert(after22b.possession === initPoss22b, `Off-ball run should KEEP possession (costs 1 AP)`);
+assert(after22b.actionPoints === 2, `Off-ball run should leave 2 AP, got ${after22b.actionPoints}`);
 
 // Test 23: Tackle immediately flips possession
 const game23 = Engine.init('4-3-3');
@@ -370,16 +370,13 @@ assert(after29.possession === 'away', 'Away should get ball after block');
 
 console.log('\n=== GAME STATUS TESTS ===\n');
 
-// Test 30: Game ends at fullTime
+// Test 30: Game ends at fullTime when clock reaches 0
 const game30 = Engine.init();
 const forcedState30 = game30.getState();
-forcedState30.timeRemaining = 25; // 2.5 moves left
+forcedState30.timeRemaining = 10;
 const engine30 = new Engine(forcedState30);
-engine30.applyMove(engine30.getBallCarrier()!.id, { col: 11, row: 'f' }); // 25 - 10 = 15
-assert(engine30.getState().status === 'playing', 'Should be playing with 15s left');
-engine30.applyMove(engine30.getBallCarrier()!.id, { col: 12, row: 'f' }); // 15 - 10 = 5
-assert(engine30.getState().status === 'playing', 'Should be playing with 5s left');
-engine30.applyMove(engine30.getBallCarrier()!.id, { col: 13, row: 'f' }); // 5 - 10 = 0
+const carrier30 = engine30.getBallCarrier()!;
+engine30.applyMove(carrier30.id, { col: carrier30.position.col + 1, row: carrier30.position.row });
 assert(engine30.getState().status === 'fullTime', 'Should be fullTime when time hits 0');
 
 // Test 31: Moves rejected after fullTime
@@ -407,6 +404,124 @@ assert('a' < 'b', 'String comparison a < b');
 assert('e' >= 'e', 'String comparison e >= e');
 assert('g' <= 'g', 'String comparison g <= g');
 assert('k' > 'j', 'String comparison k > j');
+
+console.log('\n=== ACTION POINT TESTS ===\n');
+
+// AP Test 1: Fresh game starts with 3 AP for home
+const apGame1 = Engine.init();
+assert(apGame1.getState().actionPoints === 3, 'Fresh game should start with 3 AP');
+
+// AP Test 2: Dribble (2 AP) leaves 1 AP and keeps possession
+const apGame2 = Engine.init();
+const apCarrier2 = apGame2.getBallCarrier()!;
+apGame2.applyMove(apCarrier2.id, { col: apCarrier2.position.col + 1, row: apCarrier2.position.row });
+assert(apGame2.getState().actionPoints === 1, `After dribble, AP should be 1, got ${apGame2.getState().actionPoints}`);
+assert(apGame2.getState().possession === 'home', 'Possession should remain home after dribble');
+
+// AP Test 3: Cannot dribble again with only 1 AP (cost 2)
+const apCarrier3 = apGame2.getBallCarrier()!;
+const ap3Result = apGame2.applyMove(apCarrier3.id, { col: apCarrier3.position.col + 1, row: apCarrier3.position.row });
+assert(ap3Result.valid === false, 'Should not be able to dribble with 1 AP');
+
+// AP Test 4: Can pass (cost 1) with 1 AP remaining; then phase ends
+const apState4 = Engine.init().getState();
+const apFwd4 = apState4.players.find(p => p.id === 'home_fwd1')!;
+const apMid4 = apState4.players.find(p => p.id === 'home_mid2')!;
+// Push midfielder forward of forward so the forward can pass to him
+apMid4.position = { col: apFwd4.position.col + 2, row: apFwd4.position.row };
+apFwd4.hasBall = true;
+apState4.ball = { ...apFwd4.position };
+apState4.ballCarrierId = apFwd4.id;
+apState4.actionPoints = 1;
+const apEngine4 = new Engine(apState4);
+const ap4Result = apEngine4.applyMove(apFwd4.id, apMid4.position);
+assert(ap4Result.valid === true, `Pass with 1 AP should succeed (cost 1), got ${ap4Result.outcome}`);
+assert(apEngine4.getState().possession === 'away', 'After AP exhausted, possession flips to away');
+assert(apEngine4.getState().actionPoints === 3, 'After phase end, opponent gets fresh 3 AP');
+
+// AP Test 5: Tackle wipes attacker's AP, gives 3 to tackler's team
+const apState5 = Engine.init().getState();
+const apFwd5 = apState5.players.find(p => p.id === 'home_fwd1')!;
+const apDef5 = apState5.players.find(p => p.id === 'away_def1')!;
+apFwd5.position = { col: 11, row: 'f' };
+apFwd5.hasBall = true;
+apDef5.position = { col: 12, row: 'f' };
+apState5.ball = { ...apFwd5.position };
+apState5.ballCarrierId = apFwd5.id;
+apState5.actionPoints = 2; // home spent 1
+const apEngine5 = new Engine(apState5);
+const ap5Result = apEngine5.applyMove(apDef5.id, apFwd5.position);
+assert(ap5Result.outcome === 'tackled', 'Should be a tackle');
+assert(apEngine5.getState().possession === 'away', 'Possession flips to tackler');
+assert(apEngine5.getState().actionPoints === 3, 'Tackler team gets fresh 3 AP');
+
+// AP Test 6: Goal grants conceding team fresh 3 AP at kickoff
+const apState6 = Engine.init().getState();
+const apFwd6 = apState6.players.find(p => p.id === 'home_fwd1')!;
+apFwd6.position = { col: 21, row: 'f' };
+apFwd6.hasBall = true;
+apState6.ball = { ...apFwd6.position };
+apState6.ballCarrierId = apFwd6.id;
+// Move all away defenders far away so the shot can't be blocked
+apState6.players.filter(p => p.team === 'away' && p.role !== 'gk').forEach(p => {
+  p.position = { col: 1, row: 'a' };
+});
+apState6.actionPoints = 2;
+const apEngine6 = new Engine(apState6);
+const ap6Result = apEngine6.applyMove(apFwd6.id, { col: 22, row: 'f' });
+if (ap6Result.outcome === 'goal') {
+  assert(apEngine6.getState().possession === 'away', 'Conceding team gets ball');
+  assert(apEngine6.getState().actionPoints === 3, 'Conceding team gets fresh 3 AP');
+} else {
+  assert(false, `Expected goal, got ${ap6Result.outcome}`);
+}
+
+// AP Test 7: Open receiver — 1 marker still allows pass
+const apState7 = Engine.init().getState();
+const apFwd7 = apState7.players.find(p => p.id === 'home_fwd1')!;
+const apMid7 = apState7.players.find(p => p.id === 'home_mid2')!;
+const apOneMarker = apState7.players.find(p => p.id === 'away_def1')!;
+apFwd7.position = { col: 10, row: 'f' };
+apFwd7.hasBall = true;
+apMid7.position = { col: 12, row: 'f' };
+apOneMarker.position = { col: 13, row: 'f' }; // 1 cell from receiver
+apState7.ball = { ...apFwd7.position };
+apState7.ballCarrierId = apFwd7.id;
+const apEngine7 = new Engine(apState7);
+const ap7Valid = canMoveTo(apEngine7.getState(), apFwd7, apMid7.position);
+assert(ap7Valid === true, '1 marker within 1 cell should NOT block pass (relaxed rule)');
+
+// AP Test 8: Open receiver — 2 markers blocks pass
+const apState8 = Engine.init().getState();
+const apFwd8 = apState8.players.find(p => p.id === 'home_fwd1')!;
+const apMid8 = apState8.players.find(p => p.id === 'home_mid2')!;
+const apMarker8a = apState8.players.find(p => p.id === 'away_def1')!;
+const apMarker8b = apState8.players.find(p => p.id === 'away_def2')!;
+apFwd8.position = { col: 10, row: 'f' };
+apFwd8.hasBall = true;
+apMid8.position = { col: 12, row: 'f' };
+apMarker8a.position = { col: 13, row: 'f' };
+apMarker8b.position = { col: 12, row: 'g' };
+apState8.ball = { ...apFwd8.position };
+apState8.ballCarrierId = apFwd8.id;
+const apEngine8 = new Engine(apState8);
+const ap8Valid = canMoveTo(apEngine8.getState(), apFwd8, apMid8.position);
+assert(ap8Valid === false, '2 markers within 1 cell should block pass');
+
+// AP Test 9: endTurn() flips possession and resets AP
+const apGame9 = Engine.init();
+const apCarrier9 = apGame9.getBallCarrier()!;
+apGame9.applyMove(apCarrier9.id, { col: apCarrier9.position.col + 1, row: apCarrier9.position.row });
+assert(apGame9.getState().actionPoints === 1, 'After dribble AP=1');
+apGame9.endTurn();
+assert(apGame9.getState().possession === 'away', 'endTurn flips possession');
+assert(apGame9.getState().actionPoints === 3, 'endTurn resets AP to 3');
+
+// AP Test 10: endTurn() does not advance the clock
+const apGame10 = Engine.init();
+const apTimeBefore = apGame10.getState().timeRemaining;
+apGame10.endTurn();
+assert(apGame10.getState().timeRemaining === apTimeBefore, 'endTurn should not deduct time');
 
 console.log('\n=== SUMMARY ===');
 console.log(`Passed: ${pass}/${pass + fail}`);

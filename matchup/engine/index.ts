@@ -15,7 +15,7 @@ import {
   classifyMove,
   checkInterception,
 } from './moves.js';
-import { gridDistance } from './types.js';
+import { gridDistance, AP_COST } from './types.js';
 
 const MOVE_TIME = 10; // seconds per move
 
@@ -211,24 +211,36 @@ export class Engine {
       newState.ballCarrierId = null;
     }
 
-    // ---- UPDATE POSSESSION & MOVE COUNT ----
-    if (possessionChange || scored) {
-      if (!scored) {
-        newState.possession =
-          newState.possession === 'home' ? 'away' : 'home';
-      }
+    // ---- UPDATE AP, POSSESSION & MOVE COUNT ----
+    // Goal: ball already given to conceding team above; just give them a fresh phase.
+    if (scored) {
+      newState.actionPoints = 3;
       newState.moveNumber = 1;
       newState.movePhase = 'attack';
-    } else if (moveType === 'run') {
-      // Off-ball runs end your turn. You moved a player, now the opponent reacts.
-      newState.possession =
-        newState.possession === 'home' ? 'away' : 'home';
-      newState.moveNumber = 1;
-      newState.movePhase = 'attack';
-    } else {
-      // Successful dribble or pass: you keep the ball! Reset move counter, keep possession.
-      newState.moveNumber = 1;
     }
+    // Possession change (tackle / interception / miss / block): flip to whichever team now holds the ball.
+    else if (possessionChange) {
+      const newCarrier = newState.players.find((p) => p.hasBall);
+      newState.possession = newCarrier ? newCarrier.team : (newState.possession === 'home' ? 'away' : 'home');
+      newState.actionPoints = 3;
+      newState.moveNumber = 1;
+      newState.movePhase = 'attack';
+    }
+    // Normal successful play: deduct AP, end phase if budget hits 0.
+    else if (moveType === 'dribble' || moveType === 'pass' || moveType === 'run' || moveType === 'shoot') {
+      const cost = AP_COST[moveType];
+      newState.actionPoints = Math.max(0, newState.actionPoints - cost);
+
+      if (newState.actionPoints <= 0) {
+        newState.possession = newState.possession === 'home' ? 'away' : 'home';
+        newState.actionPoints = 3;
+        newState.moveNumber = 1;
+        newState.movePhase = 'attack';
+      } else {
+        newState.moveNumber++;
+      }
+    }
+
     // ---- UPDATE TIME ----
     newState.timeRemaining = Math.max(0, newState.timeRemaining - MOVE_TIME);
 
@@ -248,6 +260,17 @@ export class Engine {
       scored,
       possessionChange,
     };
+  }
+
+  endTurn(): GameState {
+    if (this.state.status !== 'playing') return this.getState();
+    const newState = JSON.parse(JSON.stringify(this.state)) as GameState;
+    newState.possession = newState.possession === 'home' ? 'away' : 'home';
+    newState.actionPoints = 3;
+    newState.moveNumber = 1;
+    newState.movePhase = 'attack';
+    this.state = newState;
+    return this.getState();
   }
 
   static init(

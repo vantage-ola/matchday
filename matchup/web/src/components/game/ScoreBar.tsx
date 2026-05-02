@@ -29,7 +29,18 @@ export function ScoreBar({ state, homeFormation, awayFormation }: ScoreBarProps)
         <span className="text-2xl font-bold tabular-nums">{state.score.home}</span>
         <div className="flex flex-col items-center">
           <span className="text-sm font-medium tabular-nums">{formatTime(state.timeRemaining)}</span>
-          <span className="text-[10px] text-muted-foreground">{state.possession === 'home' ? 'HOME' : 'AWAY'}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">{state.possession === 'home' ? 'HOME' : 'AWAY'}</span>
+            <div className="flex items-center gap-0.5">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: i < state.actionPoints ? '#22c55e' : '#3f3f46' }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
         <span className="text-2xl font-bold tabular-nums">{state.score.away}</span>
       </div>

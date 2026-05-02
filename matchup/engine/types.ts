@@ -33,6 +33,7 @@ export interface GameState {
   status: GameStatus;
   homeFormation: FormationName;
   awayFormation: FormationName;
+  actionPoints: number;
 }
 
 export type GameStatus = 'playing' | 'halfTime' | 'fullTime' | 'abandoned';
@@ -65,6 +66,13 @@ export const MAX_SHOT_DIST = 3;
 
 // Interception: how close a defender must be to the pass line
 export const INTERCEPT_RADIUS = 1.2;
+
+export const AP_COST: Record<string, number> = {
+  run: 1,
+  pass: 1,
+  dribble: 2,
+  shoot: 2,
+};
 
 export function posEq(a: GridPosition, b: GridPosition): boolean {
   return a.col === b.col && a.row === b.row;

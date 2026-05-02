@@ -14,6 +14,7 @@ export {
   posToString,
   rowToNum,
   gridDistance,
+  AP_COST,
 } from '@engine/types.js';
 export {
   getValidMoves,

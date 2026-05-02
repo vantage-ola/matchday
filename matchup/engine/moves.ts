@@ -1,7 +1,6 @@
 import type { GameState, Player, GridPosition, Team } from './types.js';
 import {
   isInGoalArea,
-  isGoalPosition,
   posEq,
   rowToNum,
   gridDistance,
@@ -11,6 +10,7 @@ import {
   MAX_TACKLE_DIST,
   MAX_SHOT_DIST,
   INTERCEPT_RADIUS,
+  AP_COST,
 } from './types.js';
 import { getPlayer, getBallCarrier, getPlayerAt, getTeamPlayers } from './formations.js';
 
@@ -83,13 +83,17 @@ export function canMoveTo(
   if (to.col < 1 || to.col > 22) return false;
   if (to.row < 'a' || to.row > 'k') return false;
 
-  // Same position check (handled by validateMove too, but defensive)
+  // Same position check
   if (posEq(player.position, to)) return false;
 
   const moveType = classifyMove(state, player, to);
   if (moveType === 'invalid') return false;
 
-  // Backward PASSES to teammates are allowed (to relieve pressure).
+  // ACTION POINT BUDGET CHECK
+  const cost = AP_COST[moveType];
+  if (state.actionPoints < cost) return false;
+
+  // Ball carriers cannot dribble/shoot backward (passes to teammates allowed)
   const ballCarrier = getBallCarrier(state);
   const hasBall = ballCarrier?.id === player.id;
   if (hasBall) {
@@ -100,6 +104,21 @@ export function canMoveTo(
     }
   }
   
+  // STRICT OPEN RECEIVER CHECK
+  if (moveType === 'pass') {
+    const target = getPlayerAt(state, to);
+    if (target) {
+      const oppTeam = player.team === 'home' ? 'away' : 'home';
+      const isMarked = state.players.some(p => {
+        if (p.team !== oppTeam) return false;
+        // Check 1-cell radius (Chebyshev distance)
+        return Math.abs(p.position.col - target.position.col) <= 1 && 
+               Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
+      });
+      if (isMarked) return false;
+    }
+  }
+
   // Distance check per move type
   const dist = gridDistance(player.position, to);
   switch (moveType) {
@@ -156,6 +175,24 @@ export function validateMove(
     const moveType = classifyMove(state, player, to);
     const ballCarrier = getBallCarrier(state);
     const hasBall = ballCarrier?.id === player.id;
+
+    const cost = AP_COST[moveType];
+    if (state.actionPoints < cost) {
+      return { valid: false, error: `Not enough AP (need ${cost}, have ${state.actionPoints})` };
+    }
+
+    if (moveType === 'pass') {
+      const target = getPlayerAt(state, to);
+      if (target) {
+        const oppTeam = player.team === 'home' ? 'away' : 'home';
+        const isMarked = state.players.some(p => {
+          if (p.team !== oppTeam) return false;
+          return Math.abs(p.position.col - target.position.col) <= 1 && 
+                 Math.abs(rowToNum(p.position.row) - rowToNum(target.position.row)) <= 1;
+        });
+        if (isMarked) return { valid: false, error: 'Receiver is marked (1-cell rule)' };
+      }
+    }
 
     if (moveType === 'pass' && isBackwardMove(player.position, to, player.team)) {
       return { valid: false, error: 'Cannot pass backward' };

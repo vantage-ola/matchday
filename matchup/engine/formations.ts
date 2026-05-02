@@ -264,6 +264,7 @@ export function initGameState(
     status: 'playing',
     homeFormation: homeName,
     awayFormation: awayName,
+    actionPoints: 3
   };
 }
 

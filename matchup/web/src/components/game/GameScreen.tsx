@@ -5,6 +5,7 @@ import { Pitch } from './Pitch';
 import { ScoreBar } from './ScoreBar';
 import { MoveResultBar } from './MoveResultBar';
 import { RotateDeviceOverlay } from '@/components/RotateDeviceOverlay';
+import { RulebookDialog } from '@/components/rulebook/RulebookDialog';
 
 interface GameScreenProps {
   state: GameState;
@@ -18,6 +19,7 @@ interface GameScreenProps {
   onSelectPlayer: (playerId: string) => void;
   onExecuteMove: (playerId: string, to: GridPosition) => void;
   onDeselect: () => void;
+  onEndTurn: () => void;
   onQuit: () => void;
 }
 
@@ -33,6 +35,7 @@ export function GameScreen({
   onSelectPlayer,
   onExecuteMove,
   onDeselect,
+  onEndTurn,
   onQuit,
 }: GameScreenProps) {
   const [paused, setPaused] = useState(false);
@@ -40,6 +43,9 @@ export function GameScreen({
   const turnLabel = mode === 'ai'
     ? (state.possession === 'home' ? 'Your turn' : 'AI thinking...')
     : (state.possession === 'home' ? 'Home turn' : 'Away turn');
+
+  const isHumanTurn = mode === 'ai' ? state.possession === 'home' : true;
+  const canEndTurn = isHumanTurn && !isAiThinking && state.actionPoints < 3;
 
   if (paused) {
     return (
@@ -70,6 +76,18 @@ export function GameScreen({
         <div className="flex-1">
           <ScoreBar state={state} homeFormation={homeFormation} awayFormation={awayFormation} />
         </div>
+        <RulebookDialog
+          trigger={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-14 w-10 px-0 text-base text-muted-foreground"
+              aria-label="How to play"
+            >
+              ?
+            </Button>
+          }
+        />
         <Button
           variant="ghost"
           size="sm"
@@ -95,14 +113,25 @@ export function GameScreen({
         </div>
       </div>
 
-      <div className="flex h-10 items-center justify-center rounded-lg bg-card text-sm text-card-foreground">
-        {isAiThinking ? (
-          <span className="animate-pulse">AI thinking...</span>
-        ) : selectedPlayerId ? (
-          <span>Tap a highlighted cell to move</span>
-        ) : (
-          <span>{turnLabel} — tap a player to select</span>
-        )}
+      <div className="flex h-10 items-center justify-center gap-2 rounded-lg bg-card px-2 text-sm text-card-foreground">
+        <div className="flex-1 text-center">
+          {isAiThinking ? (
+            <span className="animate-pulse">AI thinking...</span>
+          ) : selectedPlayerId ? (
+            <span>Tap a highlighted cell to move</span>
+          ) : (
+            <span>{turnLabel} — tap a player to select</span>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-[10px] font-bold tracking-wide"
+          onClick={onEndTurn}
+          disabled={!canEndTurn}
+        >
+          END TURN
+        </Button>
       </div>
     </div>
     </>

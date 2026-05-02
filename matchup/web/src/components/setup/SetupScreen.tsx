@@ -5,9 +5,10 @@ import { listFormations, type FormationName, type GameMode } from '@/lib/engine'
 
 interface SetupScreenProps {
   onStart: (mode: GameMode, homeFormation: FormationName, awayFormation: FormationName) => void;
+  onShowRulebook: () => void;
 }
 
-export function SetupScreen({ onStart }: SetupScreenProps) {
+export function SetupScreen({ onStart, onShowRulebook }: SetupScreenProps) {
   const formations = listFormations();
   const [mode, setMode] = useState<GameMode>('local');
   const [homeFormation, setHomeFormation] = useState<FormationName>('4-3-3');
@@ -78,6 +79,9 @@ export function SetupScreen({ onStart }: SetupScreenProps) {
 
         <Button className="h-12 w-full text-lg font-bold" onClick={() => onStart(mode, homeFormation, awayFormation)}>
           KICK OFF
+        </Button>
+        <Button variant="outline" className="h-10 w-full" onClick={onShowRulebook}>
+          HOW TO PLAY
         </Button>
       </div>
     </div>

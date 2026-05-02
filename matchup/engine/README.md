@@ -15,9 +15,19 @@ The game takes place on a grid:
 * **Rows:** `a` to `k` (Top to bottom).
 * **Goals:** Span rows `e`, `f`, `g` at Col 1 (Home) and Col 22 (Away).
 
-### Possession & Turns
-* **1-Move Rule:** Each team gets exactly 1 move per turn, then possession flips to the other team. Tackles, interceptions, and blocked shots also flip possession immediately.
-* **10-Second Ticks:** Every single move drains 10 seconds from the match clock. A full game lasts 60 moves (10 simulated minutes).
+### Possession & Action Points
+* **3 AP per phase:** When a team gains possession, they receive 3 Action Points. Each move costs AP. When AP hits 0, possession flips and the new owner receives a fresh 3 AP.
+* **AP costs:**
+  * Pass — 1 AP
+  * Off-ball run — 1 AP
+  * Dribble — 2 AP
+  * Shoot — 2 AP
+* **Free turnovers reset the budget:** Tackles, interceptions, blocked shots, missed shots, and goals all transfer possession with a fresh 3 AP for the new owner.
+* **End Turn:** A team may voluntarily end its phase via `engine.endTurn()` — possession flips, AP resets to 3, and no clock time is consumed.
+* **10-Second Ticks:** Every successful action move drains 10 seconds from the match clock. A full game lasts 10 simulated minutes.
+
+### Open Receiver
+A pass is blocked when **2 or more** opposing players sit within 1 cell (Chebyshev radius) of the intended receiver. One marker is fine — a true swarm is not. This makes the pass game spatial: you must move teammates into space before threading a ball into pressure.
 
 ### Move Types
 The engine automatically classifies your intended move based on context:
@@ -126,7 +136,7 @@ For AI vs AI or background simulations.
 ## 🛠️ Developer Setup
 
 ```bash
-# Run the test suite (96 tests)
+# Run the test suite (114 tests)
 bun matchup/engine/test.ts
 
 # Run a simulated match in your terminal

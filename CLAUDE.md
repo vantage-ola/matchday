@@ -18,7 +18,7 @@ matchup/
 │   ├── formations.ts   # 6 formation presets, state init, player/ball queries
 │   ├── moves.ts        # Move validation (direction, bounds, occupied cells)
 │   ├── render.ts       # CLI ASCII pitch renderer + status display
-│   ├── test.ts         # 96-test suite with custom assert runner
+│   ├── test.ts         # 114-test suite with custom assert runner
 │   └── README.md       # Full technical spec
 ├── simulation/
 │   ├── simulate.ts     # AI strategies, getValidMoves(), Simulator class
@@ -36,7 +36,7 @@ matchup/
 ## Commands
 
 ```bash
-bun matchup/engine/test.ts           # Run engine test suite (96 tests)
+bun matchup/engine/test.ts           # Run engine test suite (114 tests)
 bun matchup/simulation/run.ts        # Run AI vs AI simulation
 bun --cwd matchup/web dev            # Start web dev server
 bun --cwd matchup/web build          # Production build
@@ -65,32 +65,35 @@ engine.getState() → GameState (deep clone, immutable)
 ```
 
 Each `applyMove` call:
-1. Validates move (direction, bounds, occupancy)
-2. Detects type: shoot / pass / regular move
-3. For passes: checks interception via point-to-line projection (threshold: 1.2 cells)
+1. Validates move (direction, bounds, occupancy, AP budget)
+2. Detects type: dribble / pass / shoot / run / tackle
+3. For passes: checks interception via point-to-line projection (threshold: 1.2 cells) and the open-receiver rule
 4. For shots: checks nearby defenders (distance < 2) → blocked or goal
-5. Flips possession (1 move per turn)
+5. Updates possession + AP (deducts cost, flips to opponent on AP=0 or turnover)
 6. Deducts 10 seconds from timeRemaining
 7. Returns `MoveResult` with outcome, new state, flags
 
-### Possession System
-- Team with ball gets **1 move**, then possession flips
-- Interception or blocked shot → immediate possession change
-- Goal → teams reset to formation, conceding team gets ball at their forward
+### Possession System (Action Points)
+- Each phase starts with **3 AP**. Costs: pass/run = 1, dribble/shoot = 2.
+- AP hits 0 → possession flips, new owner gets fresh 3 AP.
+- Tackles, interceptions, blocked shots, missed shots → possession flips with fresh 3 AP.
+- Goal → teams reset to formation, conceding team gets ball at their forward with fresh 3 AP.
+- `engine.endTurn()` flips possession voluntarily — no clock cost.
 
 ### Movement Rules
-- **Ball carrier**: forward or sideways only (no backward)
-- **Teammates**: forward, sideways, or backward (but not behind the ball)
-- **No cell sharing**: occupied cells block movement
-- **Passing**: ball carrier to teammate, must be forward/sideways, straight line
-- **Shooting**: must be within 3 cols of opponent goal (goal area)
+- **Ball carrier**: forward or sideways only when dribbling/shooting; passes to teammates may go backward.
+- **Teammates**: forward, sideways, or backward.
+- **No cell sharing**: occupied cells block movement.
+- **Passing**: ball carrier to teammate, straight line, max 7 cells.
+- **Open receiver**: pass blocked if **2+ defenders** sit within 1 cell of the target.
+- **Shooting**: must be within 3 cells of opponent goal.
 
 ### Key Types
 
 ```typescript
 GridPosition { col: number; row: string }     // { col: 9, row: 'f' }
 Player { id, name, role, team, position, hasBall }
-GameState { players[], ball, ballCarrierId, possession, moveNumber, score, timeRemaining, status }
+GameState { players[], ball, ballCarrierId, possession, moveNumber, score, timeRemaining, status, actionPoints }
 MoveResult { valid, outcome, newState, scored?, possessionChange? }
 
 Role: 'gk' | 'def' | 'mid' | 'fwd'
