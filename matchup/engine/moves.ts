@@ -12,6 +12,7 @@ import {
   MAX_SHOT_DIST,
   INTERCEPT_RADIUS,
   AP_COST,
+  passApCost,
 } from './types.js';
 import { getPlayer, getBallCarrier, getPlayerAt, getTeamPlayers } from './formations.js';
 
@@ -91,8 +92,10 @@ export function canMoveTo(
   if (moveType === 'invalid') return false;
 
   // ACTION POINT BUDGET CHECK
-  const cost = AP_COST[moveType];
-  if (state.actionPoints < cost) return false;
+  // Pass cost depends on distance (long-ball costs more).
+  const dist = gridDistance(player.position, to);
+  const cost = moveType === 'pass' ? passApCost(dist) : AP_COST[moveType];
+  if (state.actionPoints[player.team] < cost) return false;
 
   // Ball carriers cannot dribble/shoot backward (passes to teammates allowed)
   const ballCarrier = getBallCarrier(state);
@@ -122,7 +125,6 @@ export function canMoveTo(
   }
 
   // Distance check per move type
-  const dist = gridDistance(player.position, to);
   switch (moveType) {
     case 'dribble':  return dist <= MAX_DRIBBLE_DIST;
     case 'pass':     return dist <= MAX_PASS_DIST;
@@ -187,9 +189,10 @@ export function validateMove(
     const ballCarrier = getBallCarrier(state);
     const hasBall = ballCarrier?.id === player.id;
 
-    const cost = AP_COST[moveType];
-    if (state.actionPoints < cost) {
-      return { valid: false, error: `Not enough AP (need ${cost}, have ${state.actionPoints})` };
+    const distForCost = gridDistance(player.position, to);
+    const cost = moveType === 'pass' ? passApCost(distForCost) : AP_COST[moveType];
+    if (state.actionPoints[player.team] < cost) {
+      return { valid: false, error: `Not enough AP (need ${cost}, have ${state.actionPoints[player.team]})` };
     }
 
     if (moveType === 'pass') {

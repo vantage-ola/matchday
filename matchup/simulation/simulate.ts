@@ -15,7 +15,7 @@ export interface MoveOption {
 export interface MatchEvent {
   moveNumber: number;
   time: number; // seconds remaining
-  type: 'move' | 'pass' | 'tackle' | 'interception' | 'goal' | 'miss' | 'blocked';
+  type: 'move' | 'pass' | 'tackle' | 'tackleFailed' | 'interception' | 'goal' | 'miss' | 'blocked';
   team: Team;
   description: string;
 }
@@ -201,16 +201,29 @@ export class Simulator {
       console.log(visualizeGame(engine.getState()));
     }
 
-    while (engine.getState().status === 'playing') {
+    while (engine.getState().status === 'playing' || engine.getState().status === 'halfTime') {
       moveCount++;
       if (moveCount > (this.config.maxMoves || 1000)) break;
+
+      // Auto-resume from half-time in simulation (no UI tap available).
+      if (engine.getState().status === 'halfTime') {
+        engine.resumeFromHalfTime();
+        continue;
+      }
 
       const state = engine.getState();
       const possession = state.possession;
       const strategy = possession === 'home' ? this.config.homeStrategy : this.config.awayStrategy;
-      
+
       const validMoves = getValidMoves(state, possession);
-      if (validMoves.length === 0) break;
+      if (validMoves.length === 0) {
+        // If the possessing team is exhausted, hand the ball over and try again.
+        if (state.actionPoints[possession] <= 0) {
+          engine.skipPhase();
+          continue;
+        }
+        break;
+      }
 
       const chosenMove = strategy(state, possession, validMoves, events);
       if (!chosenMove) break;
@@ -233,9 +246,10 @@ export class Simulator {
         events.push({
           moveNumber: moveCount,
           time: state.timeRemaining,
-          type: result.outcome === 'success' ? 'move' 
+          type: result.outcome === 'success' ? 'move'
              : result.outcome === 'intercepted' ? 'interception'
              : result.outcome === 'tackled' ? 'tackle'
+             : result.outcome === 'tackleFailed' ? 'tackleFailed'
              : result.outcome,
           team: possession,
           description: desc,

@@ -2,7 +2,7 @@ export type Role = 'gk' | 'def' | 'mid' | 'fwd';
 export type Team = 'home' | 'away';
 export type MovePhase = 'attack';
 export type MoveType = 'move' | 'pass' | 'shoot' | 'tackle';
-export type Outcome = 'success' | 'intercepted' | 'blocked' | 'tackled' | 'goal' | 'miss';
+export type Outcome = 'success' | 'intercepted' | 'blocked' | 'tackled' | 'tackleFailed' | 'goal' | 'miss';
 export type TurnStatus = 'playing' | 'scored' | 'turnover';
 export type FormationName = '4-3-3' | '4-4-2' | '3-5-2' | '5-3-2' | '4-2-3-1' | '3-4-3';
 
@@ -33,7 +33,9 @@ export interface GameState {
   status: GameStatus;
   homeFormation: FormationName;
   awayFormation: FormationName;
-  actionPoints: number;
+  actionPoints: { home: number; away: number };
+  maxActionPoints: number;
+  halfTimeTriggered: boolean;
 }
 
 export type GameStatus = 'playing' | 'halfTime' | 'fullTime' | 'abandoned';
@@ -73,7 +75,18 @@ export const AP_COST: Record<string, number> = {
   pass: 1,
   dribble: 2,
   shoot: 2,
+  tackle: 1,
 };
+
+export const LONG_PASS_THRESHOLD = 4;
+export const LONG_PASS_AP_COST = 2;
+
+export function passApCost(distance: number): number {
+  return distance >= LONG_PASS_THRESHOLD ? LONG_PASS_AP_COST : AP_COST.pass;
+}
+
+export const INITIAL_AP = 20;
+export const HALF_TIME_THRESHOLD = 1800;
 
 export function posEq(a: GridPosition, b: GridPosition): boolean {
   return a.col === b.col && a.row === b.row;

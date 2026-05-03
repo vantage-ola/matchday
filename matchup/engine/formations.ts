@@ -1,4 +1,5 @@
 import type { Player, FormationName, GridPosition, Team, GameState, GameStatus } from './types.js';
+import { INITIAL_AP } from './types.js';
 
 export const GAME_DURATION = 3600; // 60 minutes in seconds
 
@@ -264,7 +265,9 @@ export function initGameState(
     status: 'playing',
     homeFormation: homeName,
     awayFormation: awayName,
-    actionPoints: 3
+    actionPoints: { home: INITIAL_AP, away: INITIAL_AP },
+    maxActionPoints: INITIAL_AP,
+    halfTimeTriggered: false,
   };
 }
 

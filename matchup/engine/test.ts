@@ -1,7 +1,7 @@
 import Engine from './index.js';
 import { initGameState, getBallCarrier, resetPositions } from './formations.js';
 import { validateMove, isBackwardMove, isForwardMove, canMoveTo, canTackle, checkInterception, classifyMove } from './moves.js';
-import { isInGoalArea, isGoalPosition, posEq, gridDistance, MAX_DRIBBLE_DIST, MAX_PASS_DIST, MAX_RUN_DIST, MAX_TACKLE_DIST, MAX_SHOT_DIST } from './types.js';
+import { isInGoalArea, isGoalPosition, posEq, gridDistance, MAX_DRIBBLE_DIST, MAX_PASS_DIST, MAX_RUN_DIST, MAX_TACKLE_DIST, MAX_SHOT_DIST, passApCost } from './types.js';
 
 let pass = 0;
 let fail = 0;
@@ -203,7 +203,7 @@ const awayDef19 = state19.players.find(p => p.id === 'away_def2')!;
 // Place defender exactly 1 cell behind the ball carrier
 const tacklerOrigPos = { col: homeFwd19.position.col - 1, row: homeFwd19.position.row };
 awayDef19.position = { ...tacklerOrigPos };
-const engine19 = new Engine(state19);
+const engine19 = new Engine(state19, () => 0); // force tackle success
 
 const canT = canTackle(engine19.getState(), awayDef19);
 assert(canT === true, `Defender should be able to tackle carrier`);
@@ -245,7 +245,7 @@ const initPoss22 = game22.getState().possession;
 game22.applyMove(bc22.id, { col: bc22.position.col + 1, row: bc22.position.row });
 const after22 = game22.getState();
 assert(after22.possession === initPoss22, `Successful dribble should KEEP possession`);
-assert(after22.actionPoints === 1, `After dribble, AP should be 1, got ${after22.actionPoints}`);
+assert(after22.actionPoints.home === 18, `After dribble, home AP should be 18, got ${after22.actionPoints.home}`);
 
 // Test 22b: Off-ball run keeps possession but spends 1 AP
 const game22b = Engine.init();
@@ -254,7 +254,7 @@ const initPoss22b = game22b.getState().possession;
 game22b.applyMove(offBall22b.id, { col: offBall22b.position.col + 1, row: offBall22b.position.row });
 const after22b = game22b.getState();
 assert(after22b.possession === initPoss22b, `Off-ball run should KEEP possession (costs 1 AP)`);
-assert(after22b.actionPoints === 2, `Off-ball run should leave 2 AP, got ${after22b.actionPoints}`);
+assert(after22b.actionPoints.home === 19, `Off-ball run should leave 19 AP, got ${after22b.actionPoints.home}`);
 
 // Test 23: Tackle immediately flips possession
 const game23 = Engine.init('4-3-3');
@@ -262,7 +262,7 @@ const state23 = game23.getState();
 const fwd23 = state23.players.find(p => p.id === 'home_fwd1')!;
 const def23 = state23.players.find(p => p.id === 'away_def2')!;
 def23.position = { col: fwd23.position.col - 1, row: fwd23.position.row };
-const engine23 = new Engine(state23);
+const engine23 = new Engine(state23, () => 0); // force tackle success
 engine23.applyMove(def23.id, fwd23.position); // tackle on move 1
 const after23 = engine23.getState();
 assert(after23.possession === 'away', 'Tackle should immediately give possession to tackling team');
@@ -407,39 +407,43 @@ assert('k' > 'j', 'String comparison k > j');
 
 console.log('\n=== ACTION POINT TESTS ===\n');
 
-// AP Test 1: Fresh game starts with 3 AP for home
+// AP Test 1: Fresh game starts with 20 AP for both teams
 const apGame1 = Engine.init();
-assert(apGame1.getState().actionPoints === 3, 'Fresh game should start with 3 AP');
+assert(apGame1.getState().actionPoints.home === 20, 'Fresh game should start with 20 AP for home');
+assert(apGame1.getState().actionPoints.away === 20, 'Fresh game should start with 20 AP for away');
+assert(apGame1.getState().maxActionPoints === 20, 'maxActionPoints should be 20');
 
-// AP Test 2: Dribble (2 AP) leaves 1 AP and keeps possession
+// AP Test 2: Dribble (2 AP) leaves 18 AP and keeps possession
 const apGame2 = Engine.init();
 const apCarrier2 = apGame2.getBallCarrier()!;
 apGame2.applyMove(apCarrier2.id, { col: apCarrier2.position.col + 1, row: apCarrier2.position.row });
-assert(apGame2.getState().actionPoints === 1, `After dribble, AP should be 1, got ${apGame2.getState().actionPoints}`);
+assert(apGame2.getState().actionPoints.home === 18, `After dribble, AP should be 18, got ${apGame2.getState().actionPoints.home}`);
 assert(apGame2.getState().possession === 'home', 'Possession should remain home after dribble');
 
-// AP Test 3: Cannot dribble again with only 1 AP (cost 2)
-const apCarrier3 = apGame2.getBallCarrier()!;
-const ap3Result = apGame2.applyMove(apCarrier3.id, { col: apCarrier3.position.col + 1, row: apCarrier3.position.row });
+// AP Test 3: Cannot dribble with only 1 AP (cost 2)
+const apState3 = Engine.init().getState();
+apState3.actionPoints.home = 1;
+const apEngine3 = new Engine(apState3);
+const apCarrier3 = apEngine3.getBallCarrier()!;
+const ap3Result = apEngine3.applyMove(apCarrier3.id, { col: apCarrier3.position.col + 1, row: apCarrier3.position.row });
 assert(ap3Result.valid === false, 'Should not be able to dribble with 1 AP');
 
-// AP Test 4: Can pass (cost 1) with 1 AP remaining; then phase ends
+// AP Test 4: Can pass (cost 1) with 1 AP remaining; AP just hits 0, no flip yet
 const apState4 = Engine.init().getState();
 const apFwd4 = apState4.players.find(p => p.id === 'home_fwd1')!;
 const apMid4 = apState4.players.find(p => p.id === 'home_mid2')!;
-// Push midfielder forward of forward so the forward can pass to him
 apMid4.position = { col: apFwd4.position.col + 2, row: apFwd4.position.row };
 apFwd4.hasBall = true;
 apState4.ball = { ...apFwd4.position };
 apState4.ballCarrierId = apFwd4.id;
-apState4.actionPoints = 1;
+apState4.actionPoints.home = 1;
 const apEngine4 = new Engine(apState4);
 const ap4Result = apEngine4.applyMove(apFwd4.id, apMid4.position);
 assert(ap4Result.valid === true, `Pass with 1 AP should succeed (cost 1), got ${ap4Result.outcome}`);
-assert(apEngine4.getState().possession === 'away', 'After AP exhausted, possession flips to away');
-assert(apEngine4.getState().actionPoints === 3, 'After phase end, opponent gets fresh 3 AP');
+assert(apEngine4.getState().actionPoints.home === 0, 'Home AP should be 0 after the pass');
+// Possession does NOT flip immediately; flip happens at start of next applyMove via exhaustion check.
 
-// AP Test 5: Tackle wipes attacker's AP, gives 3 to tackler's team
+// AP Test 5: Tackle does NOT refill AP — both teams keep their pool
 const apState5 = Engine.init().getState();
 const apFwd5 = apState5.players.find(p => p.id === 'home_fwd1')!;
 const apDef5 = apState5.players.find(p => p.id === 'away_def1')!;
@@ -448,30 +452,33 @@ apFwd5.hasBall = true;
 apDef5.position = { col: 12, row: 'f' };
 apState5.ball = { ...apFwd5.position };
 apState5.ballCarrierId = apFwd5.id;
-apState5.actionPoints = 2; // home spent 1
-const apEngine5 = new Engine(apState5);
+apState5.actionPoints.home = 18;
+apState5.actionPoints.away = 17;
+const apEngine5 = new Engine(apState5, () => 0); // force tackle success
 const ap5Result = apEngine5.applyMove(apDef5.id, apFwd5.position);
 assert(ap5Result.outcome === 'tackled', 'Should be a tackle');
 assert(apEngine5.getState().possession === 'away', 'Possession flips to tackler');
-assert(apEngine5.getState().actionPoints === 3, 'Tackler team gets fresh 3 AP');
+assert(apEngine5.getState().actionPoints.away === 16, 'Tackler team paid 1 AP for the tackle (17 - 1 = 16)');
+assert(apEngine5.getState().actionPoints.home === 18, 'Attacking team keeps its AP after tackle');
 
-// AP Test 6: Goal grants conceding team fresh 3 AP at kickoff
+// AP Test 6: Goal does NOT refill AP — kickoff happens but pools persist
 const apState6 = Engine.init().getState();
 const apFwd6 = apState6.players.find(p => p.id === 'home_fwd1')!;
 apFwd6.position = { col: 21, row: 'f' };
 apFwd6.hasBall = true;
 apState6.ball = { ...apFwd6.position };
 apState6.ballCarrierId = apFwd6.id;
-// Move all away defenders far away so the shot can't be blocked
 apState6.players.filter(p => p.team === 'away' && p.role !== 'gk').forEach(p => {
   p.position = { col: 1, row: 'a' };
 });
-apState6.actionPoints = 2;
+apState6.actionPoints.home = 5;
+apState6.actionPoints.away = 8;
 const apEngine6 = new Engine(apState6);
 const ap6Result = apEngine6.applyMove(apFwd6.id, { col: 22, row: 'f' });
 if (ap6Result.outcome === 'goal') {
   assert(apEngine6.getState().possession === 'away', 'Conceding team gets ball');
-  assert(apEngine6.getState().actionPoints === 3, 'Conceding team gets fresh 3 AP');
+  assert(apEngine6.getState().actionPoints.away === 8, 'Conceding team keeps its AP after a goal (no refill)');
+  assert(apEngine6.getState().actionPoints.home === 3, 'Scoring team AP debited shot cost (5 - 2 = 3)');
 } else {
   assert(false, `Expected goal, got ${ap6Result.outcome}`);
 }
@@ -508,20 +515,278 @@ const apEngine8 = new Engine(apState8);
 const ap8Valid = canMoveTo(apEngine8.getState(), apFwd8, apMid8.position);
 assert(ap8Valid === false, '2 markers within 1 cell should block pass');
 
-// AP Test 9: endTurn() flips possession and resets AP
+// AP Test 9: skipPhase() flips possession with no AP spend or refill
 const apGame9 = Engine.init();
 const apCarrier9 = apGame9.getBallCarrier()!;
 apGame9.applyMove(apCarrier9.id, { col: apCarrier9.position.col + 1, row: apCarrier9.position.row });
-assert(apGame9.getState().actionPoints === 1, 'After dribble AP=1');
-apGame9.endTurn();
-assert(apGame9.getState().possession === 'away', 'endTurn flips possession');
-assert(apGame9.getState().actionPoints === 3, 'endTurn resets AP to 3');
+assert(apGame9.getState().actionPoints.home === 18, 'After dribble AP=18');
+apGame9.skipPhase();
+assert(apGame9.getState().possession === 'away', 'skipPhase flips possession');
+assert(apGame9.getState().actionPoints.home === 18, 'skipPhase does not refill or spend home AP');
+assert(apGame9.getState().actionPoints.away === 20, 'skipPhase does not refill away AP');
 
-// AP Test 10: endTurn() does not advance the clock
+// AP Test 10: skipPhase() does not advance the clock
 const apGame10 = Engine.init();
 const apTimeBefore = apGame10.getState().timeRemaining;
-apGame10.endTurn();
-assert(apGame10.getState().timeRemaining === apTimeBefore, 'endTurn should not deduct time');
+apGame10.skipPhase();
+assert(apGame10.getState().timeRemaining === apTimeBefore, 'skipPhase should not deduct time');
+
+// AP Test 11: Exhaustion auto-flip — if possessing team has 0 AP, possession flips on next applyMove
+const apState11 = Engine.init().getState();
+apState11.actionPoints.home = 0;
+const apEngine11 = new Engine(apState11);
+// Try a move with the away team after the auto-flip
+const apEng11State = apEngine11.getState();
+// Need to move an away player; pick one with a free target
+const awayCarrier11 = apEng11State.players.find(p => p.id === 'away_fwd1')!;
+const awayMoveTarget = { col: awayCarrier11.position.col - 1, row: awayCarrier11.position.row };
+// Calling applyMove on home will auto-flip possession to away first; then the home player call will fail validation since possession is now away.
+// Easier: try to move a home player and confirm possession flips even though the move is invalid.
+const apEngine11b = new Engine({ ...JSON.parse(JSON.stringify(apState11)) });
+const homeCarrier11 = apEngine11b.getBallCarrier()!;
+apEngine11b.applyMove(homeCarrier11.id, { col: homeCarrier11.position.col + 1, row: homeCarrier11.position.row });
+assert(apEngine11b.getState().possession === 'away', 'Exhausted team possession flips to opponent');
+// Now away should be able to move
+const apEngine11c = new Engine(apEngine11b.getState());
+// Place an away player adjacent to a free cell, then move
+const ap11cAwayFwd = apEngine11c.getPlayer(awayCarrier11.id)!;
+const ap11cResult = apEngine11c.applyMove(ap11cAwayFwd.id, awayMoveTarget);
+assert(ap11cResult.valid === true, 'After auto-flip, away team can move');
+
+// AP Test 12: Half-time fires when timeRemaining crosses 1800s
+const apState12 = Engine.init().getState();
+apState12.timeRemaining = 1810; // next move (10s tick) will land at 1800
+const apEngine12 = new Engine(apState12);
+const apCarrier12 = apEngine12.getBallCarrier()!;
+apEngine12.applyMove(apCarrier12.id, { col: apCarrier12.position.col + 1, row: apCarrier12.position.row });
+assert(apEngine12.getState().status === 'halfTime', 'Half-time should fire when crossing 1800s');
+assert(apEngine12.getState().halfTimeTriggered === true, 'halfTimeTriggered should be set');
+
+// AP Test 13: resumeFromHalfTime() refills both teams to maxActionPoints and resumes play
+const apEngine13 = new Engine(apEngine12.getState());
+// Drain AP first to verify refill
+const ap13State = apEngine13.getState();
+ap13State.actionPoints.home = 5;
+ap13State.actionPoints.away = 8;
+ap13State.status = 'halfTime';
+const apEngine13b = new Engine(ap13State);
+apEngine13b.resumeFromHalfTime();
+assert(apEngine13b.getState().status === 'playing', 'resumeFromHalfTime sets status to playing');
+assert(apEngine13b.getState().actionPoints.home === 20, 'resumeFromHalfTime refills home AP');
+assert(apEngine13b.getState().actionPoints.away === 20, 'resumeFromHalfTime refills away AP');
+
+// AP Test 14: Goal scored on the move that crosses 1800s — score updates and HT fires
+const apState14 = Engine.init().getState();
+const apFwd14 = apState14.players.find(p => p.id === 'home_fwd1')!;
+apFwd14.position = { col: 21, row: 'f' };
+apFwd14.hasBall = true;
+apState14.ball = { ...apFwd14.position };
+apState14.ballCarrierId = apFwd14.id;
+apState14.players.filter(p => p.team === 'away' && p.role !== 'gk').forEach(p => {
+  p.position = { col: 1, row: 'a' };
+});
+apState14.timeRemaining = 1810;
+const apEngine14 = new Engine(apState14);
+const ap14Result = apEngine14.applyMove(apFwd14.id, { col: 22, row: 'f' });
+assert(ap14Result.outcome === 'goal', `Expected goal, got ${ap14Result.outcome}`);
+assert(apEngine14.getState().score.home === 1, 'Goal counts before half-time');
+assert(apEngine14.getState().status === 'halfTime', 'Half-time fires after the goal that crossed 1800s');
+
+// AP Test 15: Long-ball pass cost 2 AP (passApCost helper)
+assert(passApCost(1) === 1, 'passApCost(1) === 1');
+assert(passApCost(3) === 1, 'passApCost(3) === 1');
+assert(passApCost(4) === 2, 'passApCost(4) === 2');
+assert(passApCost(7) === 2, 'passApCost(7) === 2');
+
+console.log('\n=== PASS RISK TESTS ===\n');
+
+// Helper: build a state with a clear pass lane between fwd at col=10 and mid at col=10+dist.
+function buildPassState(dist: number) {
+  const s = Engine.init().getState();
+  const fwd = s.players.find(p => p.id === 'home_fwd1')!;
+  const mid = s.players.find(p => p.id === 'home_mid2')!;
+  fwd.position = { col: 10, row: 'f' };
+  fwd.hasBall = true;
+  mid.position = { col: 10 + dist, row: 'f' };
+  s.ball = { ...fwd.position };
+  s.ballCarrierId = fwd.id;
+  // Move all opposing outfield players far from the lane.
+  s.players.filter(p => p.team === 'away' && p.role !== 'gk').forEach(p => {
+    p.position = { col: 1, row: 'a' };
+  });
+  // Park the GK in their goal so the fallback interceptor exists.
+  const awayGk = s.players.find(p => p.id === 'away_gk')!;
+  awayGk.position = { col: 22, row: 'f' };
+  return { s, fwd, mid, awayGk };
+}
+
+// Pass Risk Test 1: Short pass (dist 2) — risk 0, no roll. Clean pass regardless of RNG.
+{
+  const { s, fwd, mid } = buildPassState(2);
+  const eng = new Engine(s, () => 0);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'success', `dist=2 with rng=0 should be a clean pass (risk=0), got ${r.outcome}`);
+}
+
+// Pass Risk Test 2: Distance 3 with rng=1 — above 0.10 threshold, no forced interception
+{
+  const { s, fwd, mid } = buildPassState(3);
+  const eng = new Engine(s, () => 1);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'success', `dist=3 with rng=1 should be a clean pass, got ${r.outcome}`);
+}
+
+// Pass Risk Test 3: Distance 3 with rng=0.5 — above 0.10, no forced interception
+{
+  const { s, fwd, mid } = buildPassState(3);
+  const eng = new Engine(s, () => 0.5);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'success', `dist=3 with rng=0.5 should be a clean pass, got ${r.outcome}`);
+}
+
+// Pass Risk Test 4: Distance 3 with rng=0.05 — below 0.10, forced interception
+{
+  const { s, fwd, mid } = buildPassState(3);
+  const eng = new Engine(s, () => 0.05);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'intercepted', `dist=3 with rng=0.05 should force interception, got ${r.outcome}`);
+}
+
+// Pass Risk Test 5: Long ball (dist 5) with rng=1 — clean pass
+{
+  const { s, fwd, mid } = buildPassState(5);
+  const eng = new Engine(s, () => 1);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'success', `dist=5 with rng=1 should be a clean pass, got ${r.outcome}`);
+}
+
+// Pass Risk Test 6: Long ball (dist 5) with rng=0 — forced interception (0 < 0.25)
+{
+  const { s, fwd, mid } = buildPassState(5);
+  const eng = new Engine(s, () => 0);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid && r.outcome === 'intercepted', `dist=5 with rng=0 should force interception, got ${r.outcome}`);
+}
+
+// Pass Risk Test 7: Long ball costs 2 AP
+{
+  const { s, fwd, mid } = buildPassState(5);
+  s.actionPoints.home = 20;
+  const eng = new Engine(s, () => 1);
+  eng.applyMove(fwd.id, mid.position);
+  assert(eng.getState().actionPoints.home === 18, `Long ball should cost 2 AP, home AP = ${eng.getState().actionPoints.home}`);
+}
+
+// Pass Risk Test 8: Short pass costs 1 AP
+{
+  const { s, fwd, mid } = buildPassState(2);
+  s.actionPoints.home = 20;
+  const eng = new Engine(s, () => 1);
+  eng.applyMove(fwd.id, mid.position);
+  assert(eng.getState().actionPoints.home === 19, `Short pass should cost 1 AP, home AP = ${eng.getState().actionPoints.home}`);
+}
+
+// Pass Risk Test 9: Long ball cannot be attempted with only 1 AP
+{
+  const { s, fwd, mid } = buildPassState(5);
+  s.actionPoints.home = 1;
+  const eng = new Engine(s, () => 1);
+  const r = eng.applyMove(fwd.id, mid.position);
+  assert(r.valid === false, `Long ball with 1 AP should be rejected, got ${r.valid}`);
+}
+
+console.log('\n=== TACKLE GAMBLE TESTS ===\n');
+
+// Helper: place a home carrier next to an away defender, controlled distance.
+function buildTackleState(dist: 1 | 2) {
+  const s = Engine.init().getState();
+  const fwd = s.players.find(p => p.id === 'home_fwd1')!;
+  const def = s.players.find(p => p.id === 'away_def1')!;
+  fwd.position = { col: 11, row: 'f' };
+  fwd.hasBall = true;
+  // dist=1 → adjacent; dist=2 → two cells horizontally
+  def.position = { col: 11 + dist, row: 'f' };
+  s.ball = { ...fwd.position };
+  s.ballCarrierId = fwd.id;
+  return { s, fwd, def };
+}
+
+// Tackle Test 1: dist=1, rng=0 (below 0.80) → success
+{
+  const { s, fwd, def } = buildTackleState(1);
+  const eng = new Engine(s, () => 0);
+  const r = eng.applyMove(def.id, fwd.position);
+  assert(r.outcome === 'tackled', `dist=1 with rng=0 should succeed, got ${r.outcome}`);
+  assert(eng.getState().possession === 'away', 'Possession flips to tackler on success');
+}
+
+// Tackle Test 2: dist=1, rng=0.99 (above 0.80) → failure
+{
+  const { s, fwd, def } = buildTackleState(1);
+  const eng = new Engine(s, () => 0.99);
+  const r = eng.applyMove(def.id, fwd.position);
+  assert(r.outcome === 'tackleFailed', `dist=1 with rng=0.99 should fail, got ${r.outcome}`);
+  assert(eng.getState().possession === 'home', 'Possession stays with carrier on failed tackle');
+}
+
+// Tackle Test 3: dist=2, rng=0.5 (above 0.40) → failure
+{
+  const { s, fwd, def } = buildTackleState(2);
+  const eng = new Engine(s, () => 0.5);
+  const r = eng.applyMove(def.id, fwd.position);
+  assert(r.outcome === 'tackleFailed', `dist=2 with rng=0.5 should fail, got ${r.outcome}`);
+}
+
+// Tackle Test 4: dist=2, rng=0 (below 0.40) → success
+{
+  const { s, fwd, def } = buildTackleState(2);
+  const eng = new Engine(s, () => 0);
+  const r = eng.applyMove(def.id, fwd.position);
+  assert(r.outcome === 'tackled', `dist=2 with rng=0 should succeed, got ${r.outcome}`);
+}
+
+// Tackle Test 5: Failed tackle costs 1 AP from defender's pool
+{
+  const { s, fwd, def } = buildTackleState(1);
+  s.actionPoints.away = 10;
+  const eng = new Engine(s, () => 0.99);
+  eng.applyMove(def.id, fwd.position);
+  assert(eng.getState().actionPoints.away === 9, `Failed tackle should debit 1 AP, away AP = ${eng.getState().actionPoints.away}`);
+  assert(eng.getState().actionPoints.home === 20, 'Carrier team AP unchanged on failed tackle');
+}
+
+// Tackle Test 6: Failed tackle pushes tackler back 1 cell from the carrier
+{
+  const { s, fwd, def } = buildTackleState(1);
+  // Defender is at col 12, carrier at col 11. Direction from carrier→defender is +col,
+  // so on failure the defender should push to col 13.
+  const eng = new Engine(s, () => 0.99);
+  eng.applyMove(def.id, fwd.position);
+  const movedDef = eng.getPlayer(def.id)!;
+  assert(movedDef.position.col === 13, `Failed tackle should push defender to col 13, got ${movedDef.position.col}`);
+  assert(movedDef.position.row === 'f', 'Pushback row should match carrier row');
+}
+
+// Tackle Test 7: Failed tackle blocked by occupied pushback cell — defender stays in place
+{
+  const { s, fwd, def } = buildTackleState(1);
+  // Place a blocker on the pushback cell (col 13, row 'f').
+  const blocker = s.players.find(p => p.id === 'home_def1')!;
+  blocker.position = { col: 13, row: 'f' };
+  const eng = new Engine(s, () => 0.99);
+  eng.applyMove(def.id, fwd.position);
+  const movedDef = eng.getPlayer(def.id)!;
+  assert(movedDef.position.col === 12, `Pushback blocked, defender stays at col 12, got ${movedDef.position.col}`);
+}
+
+// Tackle Test 8: Time still ticks on a failed tackle
+{
+  const { s, fwd, def } = buildTackleState(1);
+  const eng = new Engine(s, () => 0.99);
+  const before = eng.getState().timeRemaining;
+  eng.applyMove(def.id, fwd.position);
+  assert(eng.getState().timeRemaining === before - 10, 'Failed tackle still ticks 10s');
+}
 
 console.log('\n=== PURSUIT CAP TESTS ===\n');
 
@@ -548,7 +813,7 @@ const awayDef2 = purState2.players.find(p => p.id === 'away_def2')!;
 awayDef2.position = { col: carrier2.position.col + 4, row: 'a' };
 // Force possession to away so the defender can move
 purState2.possession = 'away';
-purState2.actionPoints = 3;
+purState2.actionPoints = { home: 3, away: 3 };
 const purEngine2 = new Engine(purState2);
 // Run 2 cells closer toward the carrier; before-dist = 4, after-dist = 2 -> closer & dist=2 > 1 -> reject
 const closeTarget = { col: awayDef2.position.col - 2, row: 'a' };
@@ -562,7 +827,7 @@ const carrier3 = purState3.players.find(p => p.hasBall)!;
 const awayDef3 = purState3.players.find(p => p.id === 'away_def2')!;
 awayDef3.position = { col: carrier3.position.col + 4, row: 'a' };
 purState3.possession = 'away';
-purState3.actionPoints = 3;
+purState3.actionPoints = { home: 3, away: 3 };
 const purEngine3 = new Engine(purState3);
 const oneCloser = { col: awayDef3.position.col - 1, row: 'a' };
 const purResult3 = purEngine3.applyMove(awayDef3.id, oneCloser);
@@ -575,7 +840,7 @@ const carrier4 = purState4.players.find(p => p.hasBall)!;
 const awayDef4 = purState4.players.find(p => p.id === 'away_def2')!;
 awayDef4.position = { col: carrier4.position.col + 4, row: 'a' };
 purState4.possession = 'away';
-purState4.actionPoints = 3;
+purState4.actionPoints = { home: 3, away: 3 };
 const purEngine4 = new Engine(purState4);
 const twoAway = { col: awayDef4.position.col + 2, row: 'a' };
 const purResult4 = purEngine4.applyMove(awayDef4.id, twoAway);
