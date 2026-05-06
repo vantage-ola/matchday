@@ -2,7 +2,7 @@ import { Engine } from '../engine/index.js';
 import { visualizeGame } from '../engine/render.js';
 import type { GameState, Team, GridPosition, MoveResult, FormationName } from '../engine/types.js';
 import { validateMove } from '../engine/moves.js';
-import { ROWS, MAX_RUN_DIST } from '../engine/types.js';
+import { ROWS, MAX_PASS_DIST } from '../engine/types.js';
 import { GAME_DURATION } from '../engine/formations.js';
 
 // --- TYPES ---
@@ -42,10 +42,10 @@ export function getValidMoves(state: GameState, team: Team): MoveOption[] {
   const teamPlayers = state.players.filter((p) => p.team === team);
 
   for (const player of teamPlayers) {
-    const minCol = Math.max(1, player.position.col - MAX_RUN_DIST);
-    const maxCol = Math.min(22, player.position.col + MAX_RUN_DIST);
-    const minRowIdx = Math.max(0, ROWS.indexOf(player.position.row as any) - MAX_RUN_DIST);
-    const maxRowIdx = Math.min(ROWS.length - 1, ROWS.indexOf(player.position.row as any) + MAX_RUN_DIST);
+    const minCol = Math.max(1, player.position.col - MAX_PASS_DIST);
+    const maxCol = Math.min(22, player.position.col + MAX_PASS_DIST);
+    const minRowIdx = Math.max(0, ROWS.indexOf(player.position.row as any) - MAX_PASS_DIST);
+    const maxRowIdx = Math.min(ROWS.length - 1, ROWS.indexOf(player.position.row as any) + MAX_PASS_DIST);
 
     for (let c = minCol; c <= maxCol; c++) {
       for (let r = minRowIdx; r <= maxRowIdx; r++) {
@@ -63,10 +63,10 @@ export function getValidMoves(state: GameState, team: Team): MoveOption[] {
 // --- BUILT-IN STRATEGIES ---
 
 export function randomStrategy(
-  state: GameState,
-  team: Team,
+  _state: GameState,
+  _team: Team,
   validMoves: MoveOption[],
-  history: MatchEvent[]
+  _history: MatchEvent[]
 ): MoveOption | null {
   if (validMoves.length === 0) return null;
   return validMoves[Math.floor(Math.random() * validMoves.length)];
@@ -216,14 +216,7 @@ export class Simulator {
       const strategy = possession === 'home' ? this.config.homeStrategy : this.config.awayStrategy;
 
       const validMoves = getValidMoves(state, possession);
-      if (validMoves.length === 0) {
-        // If the possessing team is exhausted, hand the ball over and try again.
-        if (state.actionPoints[possession] <= 0) {
-          engine.skipPhase();
-          continue;
-        }
-        break;
-      }
+      if (validMoves.length === 0) break;
 
       const chosenMove = strategy(state, possession, validMoves, events);
       if (!chosenMove) break;
