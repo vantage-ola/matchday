@@ -19,8 +19,8 @@ The game takes place on a grid:
 * **One action per turn.** Like chess. The team in possession moves one piece, once — pass, dribble, run, tackle, or shoot — and the turn ends. Possession then flips to the opponent.
 * **No action points.** No phase budget, no skip-phase. Every successful action ends your turn.
 * **Possession after a turnover:** tackle, interception, missed shot, blocked shot, or goal-conceded all hand the ball (and the next turn) to the team now holding it.
-* **Half-time pause:** When `timeRemaining` first crosses 1800s, status flips to `'halfTime'` and the UI must wait for `engine.resumeFromHalfTime()`. Resume just flips status back to `'playing'`.
-* **10-Second Ticks:** Every successful action drains 10 seconds. Full game = 60 simulated minutes.
+* **Half-time pause:** When `timeRemaining` first crosses 2700s, status flips to `'halfTime'` and the UI must wait for `engine.resumeFromHalfTime()`. Resume just flips status back to `'playing'`.
+* **10-Second Ticks:** Every successful action drains 10 seconds. Full game = 90 simulated minutes.
 
 ### Pass Risk (Geometric Only)
 A pass fails only when a defender sits on (or near) the line between passer and receiver. The engine projects each defender onto the pass line; any defender within `1.2` grid units of the line intercepts. There is no distance-tiered RNG bust and no swarm rule. RNG is still injectable via `Engine.init(home, away, rng)` — used now for tackle outcomes.

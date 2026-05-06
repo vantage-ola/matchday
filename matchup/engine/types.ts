@@ -59,7 +59,7 @@ export const MAX_PASS_DIST = 10;
 // Interception: how close a defender must be to the pass line
 export const INTERCEPT_RADIUS = 1.2;
 
-export const HALF_TIME_THRESHOLD = 1800;
+export const HALF_TIME_THRESHOLD = 2700;
 
 export function posEq(a: GridPosition, b: GridPosition): boolean {
   return a.col === b.col && a.row === b.row;

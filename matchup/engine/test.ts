@@ -639,7 +639,7 @@ console.log('\n=== CONSTANTS ===\n');
 
 assert(MAX_STEP_DIST === 1, 'MAX_STEP_DIST is 1');
 assert(MAX_PASS_DIST === 10, 'MAX_PASS_DIST is 10');
-assert(HALF_TIME_THRESHOLD === 1800, 'HALF_TIME_THRESHOLD is 1800');
+assert(HALF_TIME_THRESHOLD === 2700, 'HALF_TIME_THRESHOLD is 2700');
 
 console.log('\n=== UTILITIES ===\n');
 
