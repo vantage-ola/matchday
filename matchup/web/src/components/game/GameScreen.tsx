@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { loadSettings, updateSettings } from '@/lib/settings';
 import {
   type GameState,
   type GridPosition,
@@ -45,6 +46,15 @@ export function GameScreen({
   onQuit,
 }: GameScreenProps) {
   const [paused, setPaused] = useState(false);
+  const [showLanes, setShowLanes] = useState(() => loadSettings().passingLanes);
+
+  const toggleLanes = () => {
+    setShowLanes((prev) => {
+      const next = !prev;
+      updateSettings({ passingLanes: next });
+      return next;
+    });
+  };
 
   const turnLabel = mode === 'ai'
     ? (state.possession === 'home' ? 'Your turn' : 'AI thinking...')
@@ -120,6 +130,16 @@ export function GameScreen({
           variant="ghost"
           size="sm"
           className="h-14 px-3 text-xs text-muted-foreground"
+          aria-pressed={showLanes}
+          aria-label="Toggle passing lanes"
+          onClick={toggleLanes}
+        >
+          {showLanes ? 'LANES ON' : 'LANES OFF'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-14 px-3 text-xs text-muted-foreground"
           onClick={() => setPaused(true)}
         >
           PAUSE
@@ -134,6 +154,7 @@ export function GameScreen({
             selectedPlayerMoves={selectedPlayerMoves}
             isAiThinking={isAiThinking}
             failedTacklerId={animTacklerId}
+            showPassingLanes={showLanes}
             onSelectPlayer={onSelectPlayer}
             onExecuteMove={onExecuteMove}
             onDeselect={onDeselect}

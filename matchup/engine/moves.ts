@@ -29,6 +29,7 @@ export interface PassTarget {
   playerId: string;
   to: GridPosition;
   lineRisk: LineRisk;
+  interceptorId: string | null;
 }
 
 export interface MoveError {
@@ -300,6 +301,7 @@ export function getPassTargets(
       playerId: teammate.id,
       to: teammate.position,
       lineRisk: preview.lineRisk,
+      interceptorId: preview.interceptorId,
     });
   }
   return targets;

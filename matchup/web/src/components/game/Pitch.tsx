@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { type GameState, type Player, ROWS, posToString } from '@/lib/engine';
 import { PlayerToken } from './PlayerToken';
+import { PassingLanes } from './PassingLanes';
 
 interface PitchProps {
   state: GameState;
@@ -8,6 +9,7 @@ interface PitchProps {
   selectedPlayerMoves: Set<string>;
   isAiThinking: boolean;
   failedTacklerId?: string | null;
+  showPassingLanes?: boolean;
   onSelectPlayer: (playerId: string) => void;
   onExecuteMove: (playerId: string, to: { col: number; row: string }) => void;
   onDeselect: () => void;
@@ -28,6 +30,7 @@ export function Pitch({
   selectedPlayerMoves,
   isAiThinking,
   failedTacklerId,
+  showPassingLanes = true,
   onSelectPlayer,
   onExecuteMove,
   onDeselect,
@@ -117,6 +120,10 @@ export function Pitch({
           })
         )}
       </div>
+
+      {showPassingLanes && (
+        <PassingLanes state={state} selectedPlayerId={selectedPlayerId} />
+      )}
 
       {/* Field markings */}
       <div className="pointer-events-none absolute inset-0">
