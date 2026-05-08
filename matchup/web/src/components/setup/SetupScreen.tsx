@@ -3,13 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { listFormations, type FormationName, type GameMode } from '@/lib/engine';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { ArrowLeft } from 'lucide-react';
 
 interface SetupScreenProps {
   onStart: (mode: GameMode, homeFormation: FormationName, awayFormation: FormationName) => void;
   onShowRulebook: () => void;
+  onBack: () => void;
 }
 
-export function SetupScreen({ onStart, onShowRulebook }: SetupScreenProps) {
+export function SetupScreen({ onStart, onShowRulebook, onBack }: SetupScreenProps) {
   const formations = listFormations();
   const [mode, setMode] = useState<GameMode>('local');
   const [homeFormation, setHomeFormation] = useState<FormationName>('4-3-3');
@@ -17,6 +19,11 @@ export function SetupScreen({ onStart, onShowRulebook }: SetupScreenProps) {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center p-4">
+      <div className="absolute left-3 top-3">
+        <Button variant="ghost" size="sm" className="h-9 w-9 px-0" onClick={onBack}>
+          <ArrowLeft size={18} />
+        </Button>
+      </div>
       <div className="absolute right-3 top-3">
         <ThemeToggle />
       </div>

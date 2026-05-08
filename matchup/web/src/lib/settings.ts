@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'matchup.settings.v1';
 
+export type Difficulty = 'easy' | 'normal' | 'hard';
+
 export interface Settings {
   passingLanes: boolean;
   tackleZones: boolean;
@@ -7,6 +9,8 @@ export interface Settings {
   volume: number;
   reducedMotion: boolean;
   colorBlind: boolean;
+  difficulty: Difficulty;
+  tutorialCompleted: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -16,6 +20,8 @@ export const defaultSettings: Settings = {
   volume: 0.6,
   reducedMotion: false,
   colorBlind: false,
+  difficulty: 'normal',
+  tutorialCompleted: false,
 };
 
 function readStorage(): Partial<Settings> | null {

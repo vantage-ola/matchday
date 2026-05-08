@@ -12,7 +12,7 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       defaultTheme="dark"
       enableSystem={false}
       disableTransitionOnChange
-      themes={['light', 'dark', 'high-contrast', 'night-mode', 'pitch-dark']}
+      themes={['light', 'dark', 'high-contrast', 'night-mode', 'pitch-dark', 'ferrous', 'skeleton']}
       storageKey="matchup-theme"
     >
       {children}

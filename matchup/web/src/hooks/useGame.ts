@@ -10,9 +10,13 @@ import {
   type GamePhase,
   getValidMoves,
   aggressiveStrategy,
+  cautiousStrategy,
+  tacticalStrategy,
   posToString,
 } from '@/lib/engine';
 import { play } from '@/lib/sfx';
+import { loadSettings } from '@/lib/settings';
+import { saveMatch, clearSave, loadSavedMatch, addMatchToHistory, updateProfile, type MatchSave } from '@/lib/storage';
 
 const AI_MOVE_DELAY = 700;
 const BALL_HISTORY_LIMIT = 3;
@@ -21,7 +25,7 @@ export function useGame() {
   const engineRef = useRef<Engine | null>(null);
   const aiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [phase, setPhase] = useState<GamePhase>('setup');
+  const [phase, setPhase] = useState<GamePhase>('menu');
   const [mode, setMode] = useState<GameMode>('local');
   const [state, setState] = useState<GameState | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
@@ -30,6 +34,7 @@ export function useGame() {
   const [lastMoveResult, setLastMoveResult] = useState<MoveResult | null>(null);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [ballHistory, setBallHistory] = useState<GridPosition[]>([]);
+  const formationsRef = useRef<{ home: FormationName; away: FormationName }>({ home: '4-3-3', away: '4-3-3' });
 
   const playOutcomeSfx = useCallback((result: MoveResult) => {
     if (!result.valid) return;
@@ -72,9 +77,51 @@ export function useGame() {
     return s;
   }, []);
 
+  const doSave = useCallback(() => {
+    if (!engineRef.current) return;
+    const s = engineRef.current.getState();
+    const save: MatchSave = {
+      matchId: s.matchId,
+      state: s,
+      mode,
+      homeFormation: formationsRef.current.home,
+      awayFormation: formationsRef.current.away,
+      difficulty: loadSettings().difficulty,
+      savedAt: Date.now(),
+    };
+    saveMatch(save);
+  }, [mode]);
+
   const checkGameOver = useCallback((s: GameState) => {
     if (s.status === 'fullTime') {
       play('whistle');
+      clearSave();
+      // Record to history + profile async
+      const result = s.score.home > s.score.away ? 'win' as const
+        : s.score.away > s.score.home ? 'loss' as const
+        : 'draw' as const;
+      void addMatchToHistory({
+        matchId: s.matchId,
+        homeFormation: formationsRef.current.home,
+        awayFormation: formationsRef.current.away,
+        mode,
+        score: { ...s.score },
+        result,
+        events: s.events,
+        seed: s.seed,
+        playedAt: Date.now(),
+      });
+      void updateProfile({
+        matchId: s.matchId,
+        homeFormation: formationsRef.current.home,
+        awayFormation: formationsRef.current.away,
+        mode,
+        score: { ...s.score },
+        result,
+        events: s.events,
+        seed: s.seed,
+        playedAt: Date.now(),
+      });
       setPhase('fullTime');
       return true;
     }
@@ -82,7 +129,7 @@ export function useGame() {
       play('whistle');
     }
     return false;
-  }, []);
+  }, [mode]);
 
   const playAiTurn = useCallback(() => {
     setIsAiThinking(true);
@@ -106,7 +153,13 @@ export function useGame() {
         return;
       }
 
-      const chosen = aggressiveStrategy(s, 'away', moves, s.events);
+      const settings = loadSettings();
+      const strategy =
+        settings.difficulty === 'easy' ? cautiousStrategy
+        : settings.difficulty === 'hard' ? tacticalStrategy
+        : aggressiveStrategy;
+
+      const chosen = strategy(s, 'away', moves, s.events);
       if (!chosen) {
         setIsAiThinking(false);
         syncState();
@@ -140,9 +193,25 @@ export function useGame() {
   }, [syncState, checkGameOver, recordBallHistory, playOutcomeSfx]);
 
   const startGame = useCallback((gameMode: GameMode, homeFormation: FormationName, awayFormation: FormationName) => {
+    clearSave();
     const engine = Engine.init(homeFormation, awayFormation);
     engineRef.current = engine;
+    formationsRef.current = { home: homeFormation, away: awayFormation };
     setMode(gameMode);
+    setLastMoveResult(null);
+    setIsAiThinking(false);
+    setBallHistory([]);
+    syncState();
+    setPhase('playing');
+  }, [syncState]);
+
+  const continueMatch = useCallback(() => {
+    const save = loadSavedMatch();
+    if (!save) return;
+    const engine = new Engine(save.state);
+    engineRef.current = engine;
+    formationsRef.current = { home: save.homeFormation, away: save.awayFormation };
+    setMode(save.mode);
     setLastMoveResult(null);
     setIsAiThinking(false);
     setBallHistory([]);
@@ -174,6 +243,8 @@ export function useGame() {
     if (!newState) return;
 
     if (checkGameOver(newState)) return;
+
+    doSave();
 
     if (mode === 'ai' && newState.possession === 'away' && newState.status === 'playing') {
       playAiTurn();
@@ -209,9 +280,19 @@ export function useGame() {
     setLastMoveResult(null);
     setIsAiThinking(false);
     setBallHistory([]);
-    setPhase('setup');
+    setPhase('menu');
     setMode('local');
   }, []);
+
+  const goToSetup = useCallback(() => setPhase('setup'), []);
+  const goToMenu = useCallback(() => {
+    if (aiTimerRef.current) {
+      clearTimeout(aiTimerRef.current);
+      aiTimerRef.current = null;
+    }
+    setPhase('menu');
+  }, []);
+  const goToTutorial = useCallback(() => setPhase('tutorial'), []);
 
   return {
     phase,
@@ -229,5 +310,9 @@ export function useGame() {
     deselectPlayer,
     resumeFromHalfTime,
     resetGame,
+    goToSetup,
+    goToMenu,
+    goToTutorial,
+    continueMatch,
   };
 }

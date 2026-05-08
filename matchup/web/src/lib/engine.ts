@@ -30,10 +30,12 @@ export {
 export {
   getValidMoves,
   aggressiveStrategy,
+  cautiousStrategy,
+  tacticalStrategy,
   type MoveOption,
   type MatchEvent,
   type Strategy,
 } from '@simulation/simulate.js';
 
 export type GameMode = 'local' | 'ai';
-export type GamePhase = 'setup' | 'playing' | 'fullTime';
+export type GamePhase = 'menu' | 'setup' | 'playing' | 'fullTime' | 'tutorial';

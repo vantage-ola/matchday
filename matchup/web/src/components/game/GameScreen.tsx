@@ -14,6 +14,7 @@ import { MatchHud } from './MatchHud';
 import { RotateDeviceOverlay } from '@/components/RotateDeviceOverlay';
 import { RulebookDialog } from '@/components/rulebook/RulebookDialog';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { LiveAnnouncer } from './LiveAnnouncer';
 
 interface GameScreenProps {
   state: GameState;
@@ -202,6 +203,7 @@ export function GameScreen({
         </div>
       </div>
     </div>
+    <LiveAnnouncer lastMoveResult={lastMoveResult} />
     </>
   );
 }

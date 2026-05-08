@@ -1,5 +1,5 @@
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
 const themes = [
   { name: 'light', label: 'Light' },
@@ -7,6 +7,8 @@ const themes = [
   { name: 'high-contrast', label: 'High Contrast' },
   { name: 'night-mode', label: 'Night' },
   { name: 'pitch-dark', label: 'Pitch Dark' },
+  { name: 'ferrous', label: 'Ferrous' },
+  { name: 'skeleton', label: 'Skeleton' },
 ] as const;
 
 const ICONS: Record<string, string> = {
@@ -15,12 +17,18 @@ const ICONS: Record<string, string> = {
   'high-contrast': '◐',
   'night-mode': '☁',
   'pitch-dark': '●',
+  ferrous: '⬡',
+  skeleton: '△',
 };
 
+const emptySubscribe = () => () => {};
+
 function useMounted() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted;
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 }
 
 export function ThemeToggle() {

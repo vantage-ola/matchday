@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useCallback } from 'react';
 import {
   type GameState,
   type GridPosition,
@@ -78,6 +78,7 @@ export function Pitch({
   } | null>(null);
   const [snapTarget, setSnapTarget] = useState<GridPosition | null>(null);
   const [dragOrigin, setDragOrigin] = useState<GridPosition | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ col: number; rowIdx: number } | null>(null);
 
   const handleCellClick = (col: number, row: string) => {
     const posKey = posToString({ col, row });
@@ -95,6 +96,78 @@ export function Pitch({
 
     onDeselect();
   };
+
+  // ── Keyboard navigation ──────────────────────────────────────
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (isAiThinking) return;
+
+      const rows = ROWS as readonly string[];
+
+      // Initialise cursor at center if not set
+      if (!cursorPos && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        setCursorPos({ col: 11, rowIdx: 5 });
+        e.preventDefault();
+        return;
+      }
+
+      if (cursorPos) {
+        let { col, rowIdx } = cursorPos;
+
+        switch (e.key) {
+          case 'ArrowUp':
+            rowIdx = Math.max(0, rowIdx - 1);
+            e.preventDefault();
+            break;
+          case 'ArrowDown':
+            rowIdx = Math.min(ROWS_COUNT - 1, rowIdx + 1);
+            e.preventDefault();
+            break;
+          case 'ArrowLeft':
+            col = Math.max(1, col - 1);
+            e.preventDefault();
+            break;
+          case 'ArrowRight':
+            col = Math.min(COLS_COUNT, col + 1);
+            e.preventDefault();
+            break;
+          case ' ':
+          case 'Enter':
+            handleCellClick(col, rows[rowIdx]);
+            e.preventDefault();
+            return;
+          case 'Escape':
+            onDeselect();
+            setCursorPos(null);
+            e.preventDefault();
+            return;
+          default:
+            return;
+        }
+
+        setCursorPos({ col, rowIdx });
+      }
+
+      // Tab to cycle through team's players
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const teamPlayers = state.players
+          .filter((p) => p.team === state.possession)
+          .sort((a, b) => a.position.col - b.position.col || a.position.row.localeCompare(b.position.row));
+        if (teamPlayers.length === 0) return;
+
+        const currentIdx = selectedPlayerId
+          ? teamPlayers.findIndex((p) => p.id === selectedPlayerId)
+          : -1;
+        const nextIdx = (currentIdx + (e.shiftKey ? -1 : 1) + teamPlayers.length) % teamPlayers.length;
+        const next = teamPlayers[nextIdx];
+        onSelectPlayer(next.id);
+        const ri = rows.indexOf(next.position.row);
+        setCursorPos({ col: next.position.col, rowIdx: ri >= 0 ? ri : 5 });
+      }
+    },
+    [isAiThinking, cursorPos, state, selectedPlayerId, selectedPlayerMoves, onSelectPlayer, onDeselect, handleCellClick],
+  );
 
   const findNearestTarget = (clientX: number, clientY: number): GridPosition | null => {
     const el = containerRef.current;
@@ -185,12 +258,16 @@ export function Pitch({
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden rounded-lg"
+      className="relative w-full overflow-hidden rounded-lg outline-none"
       style={{
         aspectRatio: '22 / 11',
         backgroundColor: 'var(--pitch-bg)',
         touchAction: 'none',
       }}
+      role="grid"
+      aria-label="Football pitch — 22 columns by 11 rows"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(e) => endDrag(e, true)}
       onPointerCancel={(e) => endDrag(e, false)}
@@ -215,9 +292,21 @@ export function Pitch({
             const goal = isGoalCell(col, row);
             const isCenterLine = col === 11 || col === 12;
 
+            const isCursorHere =
+              cursorPos !== null &&
+              cursorPos.col === col &&
+              ROWS[cursorPos.rowIdx] === row;
+
+            // Build aria-label for screen readers
+            const ariaLabel = player
+              ? `Row ${row}, Column ${col}, ${player.team} ${player.role.toUpperCase()}${player.hasBall ? ' with ball' : ''}`
+              : `Row ${row}, Column ${col}${isValid ? ', valid move' : ''}${goal ? `, ${goal} goal` : ''}`;
+
             return (
               <div
                 key={posKey}
+                role="gridcell"
+                aria-label={ariaLabel}
                 onClick={() => handleCellClick(col, row)}
                 className="relative flex items-center justify-center"
                 style={{
@@ -230,6 +319,9 @@ export function Pitch({
                     ? 'rgba(255,255,255,0.08)'
                     : undefined,
                   cursor: isValid || (player && player.team === state.possession && !isAiThinking) ? 'pointer' : 'default',
+                  outline: isCursorHere ? '2px dashed rgba(250, 204, 21, 0.9)' : undefined,
+                  outlineOffset: '-1px',
+                  zIndex: isCursorHere ? 5 : undefined,
                 }}
               >
                 {player && (
