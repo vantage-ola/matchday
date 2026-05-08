@@ -1,0 +1,14 @@
+{
+  "name": "Matchup",
+  "short_name": "Matchup",
+  "description": "Turn-based football strategy game. Chess meets football on a 22×11 grid.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#111111",
+  "theme_color": "#1B5E35",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
