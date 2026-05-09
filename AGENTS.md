@@ -24,14 +24,46 @@ matchup/
 │   ├── simulate.ts     # AI strategies, getValidMoves(), Simulator class
 │   └── run.ts          # CLI runner for auto-play simulations
 └── web/                # React 19 + Vite + shadcn/ui frontend
+    ├── public/_redirects   # SPA fallback for Netlify / Cloudflare Pages
     └── src/
-        ├── App.tsx             # Phase-based router (setup → playing → fullTime)
-        ├── lib/engine.ts       # Engine bridge — re-exports from engine + simulation
-        ├── hooks/useGame.ts    # Central game state management hook
+        ├── main.tsx           # Wraps App in BrowserRouter + ThemeProvider
+        ├── App.tsx            # react-router Routes; mirrors engine phase → URL
+        ├── lib/
+        │   ├── engine.ts      # Engine bridge — re-exports from engine + simulation
+        │   └── storage.ts     # localStorage save + IndexedDB history/profile
+        ├── hooks/useGame.ts   # Central game state management hook
         └── components/
-            ├── game/           # Pitch, PlayerToken, ScoreBar, MoveResult, GameScreen, FullTimeScreen
-            └── setup/          # SetupScreen (mode + formation selection)
+            ├── NotFoundScreen.tsx   # Branded 404 ("Off the pitch")
+            ├── menu/                # MenuScreen (landing)
+            ├── setup/               # SetupScreen (mode + formation selection)
+            ├── game/                # Pitch, PlayerToken, ScoreBar, MoveResult, GameScreen, FullTimeScreen
+            ├── tutorial/            # TutorialScreen
+            ├── rulebook/            # RulebookScreen
+            ├── history/             # HistoryScreen (clickable rows → replay)
+            ├── replay/              # ReplayScreen
+            └── profile/             # ProfileScreen
 ```
+
+## Routing
+
+The web app uses `react-router-dom` v7. `BrowserRouter` wraps `App` in `main.tsx`; `App.tsx` declares all routes and mirrors engine phase changes (`playing`, `fullTime`) into the URL via a `useEffect`.
+
+| Path                | Screen                                                      |
+| ------------------- | ----------------------------------------------------------- |
+| `/`                 | `MenuScreen`                                                |
+| `/play`             | `SetupScreen`                                               |
+| `/match`            | `GameScreen` (redirects to `/` if no engine state)          |
+| `/fulltime`         | `FullTimeScreen` (redirects to `/` if no engine state)      |
+| `/tutorial`         | `TutorialScreen`                                            |
+| `/rulebook`         | `RulebookScreen`                                            |
+| `/history`          | `HistoryScreen` — rows link to `/replay/:matchId`           |
+| `/replay/:matchId`  | `ReplayScreen` — loads via `loadMatchById`; 404 if missing  |
+| `/profile`          | `ProfileScreen`                                             |
+| `*`                 | `NotFoundScreen` (branded 404)                              |
+
+Engine state lives in memory inside `useGame`, so deep-linking directly to `/match` or `/fulltime` after a reload bounces back to `/` — players resume via "Continue" on the menu, which reads the localStorage save.
+
+`public/_redirects` provides the SPA host fallback (`/*  /index.html  200`) for Netlify and Cloudflare Pages.
 
 ## Commands
 
