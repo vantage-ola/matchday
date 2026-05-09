@@ -258,7 +258,7 @@ export function Pitch({
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden rounded-lg outline-none"
+      className="relative w-full overflow-hidden border border-border outline-none"
       style={{
         aspectRatio: '22 / 11',
         backgroundColor: 'var(--pitch-bg)',
@@ -312,14 +312,14 @@ export function Pitch({
                 style={{
                   borderRight: isCenterLine && col === 11 ? '1px solid var(--pitch-line)' : undefined,
                   backgroundColor: isSnapped
-                    ? 'rgba(250, 204, 21, 0.55)'
+                    ? 'var(--pitch-snap, rgba(250, 204, 21, 0.55))'
                     : isValid
                     ? 'var(--pitch-highlight)'
                     : goal
                     ? 'rgba(255,255,255,0.08)'
                     : undefined,
                   cursor: isValid || (player && player.team === state.possession && !isAiThinking) ? 'pointer' : 'default',
-                  outline: isCursorHere ? '2px dashed rgba(250, 204, 21, 0.9)' : undefined,
+                  outline: isCursorHere ? '2px dashed var(--pitch-snap-border, rgba(250, 204, 21, 0.9))' : undefined,
                   outlineOffset: '-1px',
                   zIndex: isCursorHere ? 5 : undefined,
                 }}
@@ -371,7 +371,7 @@ export function Pitch({
             y1={dragLine.y1}
             x2={dragLine.x2}
             y2={dragLine.y2}
-            stroke="rgba(250, 204, 21, 0.95)"
+            stroke="var(--pitch-snap-border, rgba(250, 204, 21, 0.95))"
             strokeWidth={0.9}
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
@@ -380,7 +380,7 @@ export function Pitch({
             cx={dragLine.x2}
             cy={dragLine.y2}
             r={1.4}
-            fill="rgba(250, 204, 21, 0.95)"
+            fill="var(--pitch-snap-border, rgba(250, 204, 21, 0.95))"
             vectorEffect="non-scaling-stroke"
           />
         </svg>

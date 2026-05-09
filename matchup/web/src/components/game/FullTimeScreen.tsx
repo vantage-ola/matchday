@@ -107,18 +107,12 @@ function StatRow({ label, home, away }: { label: string; home: number; away: num
       <span className="w-8 text-right font-bold tabular-nums">{home}</span>
       <div className="relative flex h-[6px] flex-1 overflow-hidden rounded-full bg-muted/30">
         <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${homePct}%`,
-            background: 'rgba(255,255,255,0.8)',
-          }}
+          className="h-full rounded-full transition-all duration-500 bg-primary"
+          style={{ width: `${homePct}%` }}
         />
         <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{
-            width: `${100 - homePct}%`,
-            background: 'rgba(225,29,72,0.7)',
-          }}
+          className="h-full rounded-full transition-all duration-500 bg-destructive/80"
+          style={{ width: `${100 - homePct}%` }}
         />
       </div>
       <span className="w-8 font-bold tabular-nums">{away}</span>
@@ -179,11 +173,13 @@ export function FullTimeScreen({
   );
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center p-4">
-      <div className="w-full max-w-lg space-y-5">
-        {/* ── Header ─────────────────────────────────────────────── */}
-        <header className="text-center space-y-1">
-          <h1 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+    <div className="flex min-h-dvh flex-col items-center justify-center p-4 md:p-8 bg-background">
+      <div className="w-full max-w-5xl flex flex-col md:flex-row gap-8">
+        
+        {/* ── Left Column (45%) ──────────────────────────────────── */}
+        <div className="w-full md:w-[45%] flex flex-col gap-6">
+          <header className="text-center md:text-left space-y-1 bg-card rounded-lg p-6 border border-border">
+            <h1 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             FULL TIME
           </h1>
           <div className="flex items-center justify-center gap-6 py-2">
@@ -191,14 +187,14 @@ export function FullTimeScreen({
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {homeFormation}
               </p>
-              <p className="text-5xl font-black tabular-nums leading-none">{state.score.home}</p>
+              <p className="text-5xl font-black tabular-nums leading-none tracking-tighter">{state.score.home}</p>
             </div>
             <span className="text-xl text-muted-foreground">—</span>
             <div className="text-left">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {awayFormation}
               </p>
-              <p className="text-5xl font-black tabular-nums leading-none">{state.score.away}</p>
+              <p className="text-5xl font-black tabular-nums leading-none tracking-tighter">{state.score.away}</p>
             </div>
           </div>
           <p className="text-sm font-bold tracking-wide">
@@ -212,9 +208,35 @@ export function FullTimeScreen({
               </span>
             )}
           </p>
-        </header>
+          </header>
 
-        {/* ── Tab bar ─────────────────────────────────────────────── */}
+          {/* Goal scorers */}
+          {goalEvents.length > 0 && (
+            <div className="rounded-lg bg-card p-4 border border-border">
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Goals
+              </p>
+              <div className="space-y-2">
+                {goalEvents.map((evt, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="w-10 text-right tabular-nums text-muted-foreground">
+                      {formatMatchMinute(evt.time)}
+                    </span>
+                    <Goal size={14} className="text-primary" />
+                    <span className="font-medium">{evt.description}</span>
+                    <span className="ml-auto rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                      {evt.team === 'home' ? homeFormation : awayFormation}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right Column (55%) ─────────────────────────────────── */}
+        <div className="w-full md:w-[55%] flex flex-col gap-6">
+          {/* ── Tab bar ─────────────────────────────────────────────── */}
         <nav className="flex rounded-lg bg-muted/40 p-0.5">
           {([
             { key: 'summary' as Tab, label: 'Summary', icon: Crosshair },
@@ -292,35 +314,10 @@ export function FullTimeScreen({
               )}
             </div>
 
-            {/* Goal scorers */}
-            {goalEvents.length > 0 && (
-              <div className="rounded-lg bg-card p-3">
-                <p className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Goals
-                </p>
-                <div className="space-y-1">
-                  {goalEvents.map((evt, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 text-xs"
-                    >
-                      <span className="w-10 text-right tabular-nums text-muted-foreground">
-                        {formatMatchMinute(evt.time)}
-                      </span>
-                      <Goal size={12} className="text-primary" />
-                      <span className="font-medium">{evt.description}</span>
-                      <span className="ml-auto rounded bg-muted/50 px-1.5 py-0.5 text-[9px] font-bold uppercase">
-                        {evt.team === 'home' ? homeFormation : awayFormation}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {tab === 'log' && (
+          {tab === 'log' && (
           <div className="animate-in fade-in-50 duration-200">
             <div className="max-h-[45vh] overflow-y-auto rounded-lg bg-card p-3 space-y-0.5">
               {state.events.length === 0 ? (
@@ -365,20 +362,21 @@ export function FullTimeScreen({
           </div>
         )}
 
-        {/* ── Actions ─────────────────────────────────────────────── */}
-        <div className="space-y-2">
-          <Button className="h-12 w-full text-sm font-bold uppercase tracking-wide" onClick={onPlayAgain}>
-            Play Again
-          </Button>
-          {onRematch && (
-            <Button
-              variant="outline"
-              className="h-12 w-full text-sm font-bold uppercase tracking-wide"
-              onClick={onRematch}
-            >
-              Rematch — Swap Sides
+          {/* ── Actions ─────────────────────────────────────────────── */}
+          <div className="space-y-3 mt-auto">
+            <Button className="h-14 w-full text-base font-bold uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/90" onClick={onPlayAgain}>
+              Play Again
             </Button>
-          )}
+            {onRematch && (
+              <Button
+                variant="outline"
+                className="h-14 w-full text-sm font-bold uppercase tracking-wider border-border text-foreground hover:bg-muted"
+                onClick={onRematch}
+              >
+                Rematch — Swap Sides
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

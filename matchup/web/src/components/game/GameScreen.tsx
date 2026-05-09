@@ -119,86 +119,106 @@ export function GameScreen({
   return (
     <>
     <RotateDeviceOverlay />
-    <div className="flex h-dvh flex-col gap-2 p-2">
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <ScoreBar state={state} homeFormation={homeFormation} awayFormation={awayFormation} />
+    <div className="flex h-dvh flex-col md:flex-row gap-4 p-2 md:p-4 bg-background">
+      {/* ── Left Column (70%): Pitch Area ── */}
+      <div className="flex flex-1 md:w-[70%] flex-col gap-2 min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <ScoreBar state={state} homeFormation={homeFormation} awayFormation={awayFormation} />
+          </div>
+          <div className="md:hidden flex items-center gap-1">
+             <ThemeToggle />
+             <Button variant="ghost" size="icon" onClick={() => setPaused(true)}>⏸</Button>
+          </div>
         </div>
-        <RulebookDialog
-          trigger={
+
+        <MatchHud state={state} />
+
+        <div className="relative flex-1 min-h-0 flex items-center justify-center">
+          <div className="w-full">
+            <Pitch
+              state={state}
+              selectedPlayerId={selectedPlayerId}
+              selectedPlayerMoves={selectedPlayerMoves}
+              isAiThinking={isAiThinking}
+              failedTacklerId={animTacklerId}
+              showPassingLanes={showLanes}
+              showTackleZones={showZones}
+              ballHistory={ballHistory}
+              lastMoveResult={lastMoveResult}
+              onSelectPlayer={onSelectPlayer}
+              onExecuteMove={onExecuteMove}
+              onDeselect={onDeselect}
+            />
+            <MoveResultBar result={lastMoveResult} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right Column (30%): Controls Area ── */}
+      <div className="hidden md:flex flex-col w-[30%] min-w-[260px] shrink-0 border-l border-border pl-4">
+        <div className="flex min-h-[5rem] items-center justify-center rounded-lg bg-card border border-border p-4 text-center">
+          <p className="text-sm font-bold tracking-wider uppercase text-card-foreground">
+            {isAiThinking ? (
+              <span className="animate-pulse">AI thinking...</span>
+            ) : selectedPlayerId ? (
+              <span>Tap highlighted cell to move</span>
+            ) : (
+              <span>{turnLabel}</span>
+            )}
+          </p>
+        </div>
+
+        <div className="mt-auto grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            className="h-12 text-[10px]"
+            aria-pressed={showLanes}
+            onClick={toggleLanes}
+          >
+            {showLanes ? 'LANES ON' : 'LANES OFF'}
+          </Button>
+          <Button
+            variant="outline"
+            className="h-12 text-[10px]"
+            aria-pressed={showZones}
+            onClick={toggleZones}
+          >
+            {showZones ? 'ZONES ON' : 'ZONES OFF'}
+          </Button>
+          
+          <div className="col-span-2 flex gap-2">
+            <RulebookDialog
+              trigger={
+                <Button variant="outline" className="flex-1 h-12 text-[10px]">
+                  RULEBOOK
+                </Button>
+              }
+            />
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-14 w-10 px-0 text-base text-muted-foreground"
-              aria-label="How to play"
+              variant="outline"
+              className="flex-1 h-12 text-[10px]"
+              onClick={() => setPaused(true)}
             >
-              ?
+              PAUSE
             </Button>
-          }
-        />
-        <div className="flex h-14 items-center">
-          <ThemeToggle />
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-14 px-3 text-xs text-muted-foreground"
-          aria-pressed={showLanes}
-          aria-label="Toggle passing lanes"
-          onClick={toggleLanes}
-        >
-          {showLanes ? 'LANES ON' : 'LANES OFF'}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-14 px-3 text-xs text-muted-foreground"
-          aria-pressed={showZones}
-          aria-label="Toggle tackle zones"
-          onClick={toggleZones}
-        >
-          {showZones ? 'ZONES ON' : 'ZONES OFF'}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-14 px-3 text-xs text-muted-foreground"
-          onClick={() => setPaused(true)}
-        >
-          PAUSE
-        </Button>
-      </div>
-
-      <MatchHud state={state} />
-
-      <div className="relative flex-1 min-h-0 flex items-center">
-        <div className="w-full">
-          <Pitch
-            state={state}
-            selectedPlayerId={selectedPlayerId}
-            selectedPlayerMoves={selectedPlayerMoves}
-            isAiThinking={isAiThinking}
-            failedTacklerId={animTacklerId}
-            showPassingLanes={showLanes}
-            showTackleZones={showZones}
-            ballHistory={ballHistory}
-            lastMoveResult={lastMoveResult}
-            onSelectPlayer={onSelectPlayer}
-            onExecuteMove={onExecuteMove}
-            onDeselect={onDeselect}
-          />
-          <MoveResultBar result={lastMoveResult} />
+          </div>
+          
+          <div className="col-span-2 flex justify-center mt-2">
+            <ThemeToggle />
+          </div>
         </div>
       </div>
 
-      <div className="flex h-10 items-center justify-center gap-2 rounded-lg bg-card px-2 text-sm text-card-foreground">
-        <div className="flex-1 text-center">
+      {/* Mobile status bar (visible only on small screens) */}
+      <div className="md:hidden flex h-10 items-center justify-center gap-2 rounded-lg bg-card px-2 text-sm text-card-foreground border border-border">
+        <div className="flex-1 text-center font-bold uppercase tracking-wider text-[10px]">
           {isAiThinking ? (
             <span className="animate-pulse">AI thinking...</span>
           ) : selectedPlayerId ? (
-            <span>Tap a highlighted cell to move</span>
+            <span>Tap cell to move</span>
           ) : (
-            <span>{turnLabel} — tap a player to select</span>
+            <span>{turnLabel}</span>
           )}
         </div>
       </div>

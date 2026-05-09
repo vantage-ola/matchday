@@ -16,6 +16,10 @@ const badgeVariants = cva(
         outline: "text-foreground [a]:hover:text-foreground/70",
         ghost: "text-muted-foreground hover:text-foreground",
         link: "text-foreground underline-offset-4 hover:underline",
+        live: "bg-primary text-primary-foreground animate-pulse",
+        league: "border border-primary text-primary bg-transparent",
+        result: "bg-primary text-primary-foreground",
+        "result-loss": "border border-primary text-primary bg-transparent",
       },
     },
     defaultVariants: {
