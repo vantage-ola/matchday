@@ -130,7 +130,7 @@ export function TutorialScreen({ onComplete, onQuit }: TutorialScreenProps) {
   }
 
   return (
-    <div className="flex h-dvh flex-col gap-2 p-2">
+    <div className="flex h-dvh flex-col gap-2 p-2 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" className="h-9 w-9 px-0" onClick={onQuit}>
@@ -155,20 +155,30 @@ export function TutorialScreen({ onComplete, onQuit }: TutorialScreenProps) {
       </div>
 
       {/* Pitch */}
-      <div className="relative flex-1 min-h-0 flex items-center">
-        <div className="w-full">
-          <Pitch
-            state={state}
-            selectedPlayerId={selectedPlayerId}
-            selectedPlayerMoves={selectedPlayerMoves}
-            isAiThinking={false}
-            showPassingLanes={true}
-            showTackleZones={true}
-            ballHistory={[]}
-            onSelectPlayer={selectPlayer}
-            onExecuteMove={executeMove}
-            onDeselect={deselectPlayer}
-          />
+      <div className="relative flex-1 min-h-0 w-full flex items-center justify-center pb-2 overflow-hidden">
+        <div 
+          className="relative" 
+          style={{ 
+            aspectRatio: '22/11',
+            width: '10000px', /* Absurdly large basis */
+            maxWidth: '100%', /* Constrain to parent width */
+            maxHeight: '100%', /* Constrain to parent height */
+          }}
+        >
+          <div className="absolute inset-0">
+            <Pitch
+              state={state}
+              selectedPlayerId={selectedPlayerId}
+              selectedPlayerMoves={selectedPlayerMoves}
+              isAiThinking={false}
+              showPassingLanes={true}
+              showTackleZones={true}
+              ballHistory={[]}
+              onSelectPlayer={selectPlayer}
+              onExecuteMove={executeMove}
+              onDeselect={deselectPlayer}
+            />
+          </div>
         </div>
       </div>
 
