@@ -73,6 +73,7 @@ export interface GameState {
   possession: Team;
   score: { home: number; away: number };
   timeRemaining: number;
+  matchLength: number;
   status: GameStatus;
   homeFormation: FormationName;
   awayFormation: FormationName;
@@ -108,7 +109,13 @@ export const MAX_PASS_DIST = 10;
 // Interception: how close a defender must be to the pass line
 export const INTERCEPT_RADIUS = 1.2;
 
+export const DEFAULT_MATCH_LENGTH = 5400;
+export const MOVE_TIME = 10;
 export const HALF_TIME_THRESHOLD = 2700;
+
+export function halfTimeThresholdFor(matchLength: number): number {
+  return Math.floor(matchLength / 2);
+}
 
 export function posEq(a: GridPosition, b: GridPosition): boolean {
   return a.col === b.col && a.row === b.row;

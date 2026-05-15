@@ -66,8 +66,8 @@ function topPlayer(players: Player[], team: 'home' | 'away', stat: keyof Player[
   return filtered.reduce((best, p) => (p.stats[stat] > best.stats[stat] ? p : best));
 }
 
-function formatMatchMinute(time: number): string {
-  const mins = Math.floor((5400 - time) / 60);
+function formatMatchMinute(time: number, matchLength: number): string {
+  const mins = Math.floor((matchLength - time) / 60);
   return `${mins}'`;
 }
 
@@ -220,7 +220,7 @@ export function FullTimeScreen({
                 {goalEvents.map((evt, i) => (
                   <div key={i} className="flex items-center gap-2 text-sm">
                     <span className="w-10 text-right tabular-nums text-muted-foreground">
-                      {formatMatchMinute(evt.time)}
+                      {formatMatchMinute(evt.time, state.matchLength)}
                     </span>
                     <Goal size={14} className="text-primary" />
                     <span className="font-medium">{evt.description}</span>
@@ -333,7 +333,7 @@ export function FullTimeScreen({
                       }`}
                     >
                       <span className="mt-0.5 w-10 shrink-0 text-right tabular-nums text-muted-foreground">
-                        {formatMatchMinute(evt.time)}
+                        {formatMatchMinute(evt.time, state.matchLength)}
                       </span>
                       <Icon size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 leading-snug">{evt.description}</span>

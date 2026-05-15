@@ -6,7 +6,14 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ArrowLeft, Volume2, VolumeOff } from 'lucide-react';
-import { loadSettings, updateSettings, type Settings, type Difficulty } from '@/lib/settings';
+import {
+  loadSettings,
+  updateSettings,
+  MATCH_LENGTH_PRESETS,
+  SECONDS_PER_MOVE,
+  type Settings,
+  type Difficulty,
+} from '@/lib/settings';
 import { useTheme } from 'next-themes';
 
 interface SettingsSheetProps {
@@ -72,6 +79,38 @@ export function SettingsSheet({ onBack }: SettingsSheetProps) {
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+        </div>
+
+        <Separator />
+
+        {/* ── Match Length ─────────────────────────────────── */}
+        <div className="space-y-2">
+          <Label>Match Length</Label>
+          <ToggleGroup
+            value={[String(settings.matchLength)]}
+            onValueChange={(val) => {
+              if (val.length > 0) patch({ matchLength: Number(val[val.length - 1]) });
+            }}
+            variant="outline"
+            className="grid w-full grid-cols-4 gap-1.5"
+            spacing={1}
+          >
+            {MATCH_LENGTH_PRESETS.map((p) => (
+              <ToggleGroupItem
+                key={p.seconds}
+                value={String(p.seconds)}
+                className="flex h-auto flex-col gap-0.5 px-2 py-2.5"
+              >
+                <span className="text-[11px] font-bold">{p.minutes}m</span>
+                <span className="text-[9px] leading-tight opacity-70">
+                  {p.seconds / SECONDS_PER_MOVE} moves
+                </span>
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <p className="text-[10px] leading-tight text-muted-foreground">
+            Each move costs {SECONDS_PER_MOVE}s of match time.
+          </p>
         </div>
 
         <Separator />

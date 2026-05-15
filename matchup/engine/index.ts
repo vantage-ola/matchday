@@ -16,7 +16,7 @@ import {
   classifyMove,
   checkInterception,
 } from './moves.js';
-import { gridDistance, HALF_TIME_THRESHOLD, rowToNum } from './types.js';
+import { gridDistance, MOVE_TIME, halfTimeThresholdFor, rowToNum } from './types.js';
 
 function describeOutcome(player: Player, outcome: Outcome, moveLabel: MoveType): string {
   switch (outcome) {
@@ -56,9 +56,8 @@ function outcomeToEventType(outcome: Outcome, moveLabel: MoveType): MatchEventTy
   }
 }
 
-const MOVE_TIME = 10; // seconds per move
-
 export { listFormations, getFormation, FORMATIONS };
+export { MOVE_TIME, DEFAULT_MATCH_LENGTH, halfTimeThresholdFor } from './types.js';
 export {
   previewPass,
   previewTackle,
@@ -328,7 +327,7 @@ export class Engine {
       newState.status = 'fullTime';
     } else if (
       !newState.halfTimeTriggered &&
-      newState.timeRemaining <= HALF_TIME_THRESHOLD
+      newState.timeRemaining <= halfTimeThresholdFor(newState.matchLength)
     ) {
       newState.halfTimeTriggered = true;
       newState.status = 'halfTime';

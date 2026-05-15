@@ -2,6 +2,15 @@ const STORAGE_KEY = 'matchup.settings.v1';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
+export const MATCH_LENGTH_PRESETS = [
+  { minutes: 30, seconds: 1800 },
+  { minutes: 45, seconds: 2700 },
+  { minutes: 60, seconds: 3600 },
+  { minutes: 90, seconds: 5400 },
+] as const;
+
+export const SECONDS_PER_MOVE = 10;
+
 export interface Settings {
   passingLanes: boolean;
   tackleZones: boolean;
@@ -10,6 +19,7 @@ export interface Settings {
   reducedMotion: boolean;
   colorBlind: boolean;
   difficulty: Difficulty;
+  matchLength: number;
   tutorialCompleted: boolean;
 }
 
@@ -21,6 +31,7 @@ export const defaultSettings: Settings = {
   reducedMotion: false,
   colorBlind: false,
   difficulty: 'normal',
+  matchLength: 5400,
   tutorialCompleted: false,
 };
 

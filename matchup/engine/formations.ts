@@ -1,7 +1,7 @@
 import type { Player, FormationName, GridPosition, Team, GameState } from './types.js';
-import { emptyPlayerStats } from './types.js';
+import { emptyPlayerStats, DEFAULT_MATCH_LENGTH } from './types.js';
 
-export const GAME_DURATION = 5400; // 90 minutes in seconds
+export const GAME_DURATION = DEFAULT_MATCH_LENGTH;
 
 export interface FormationPreset {
   name: FormationName;
@@ -232,6 +232,7 @@ export function resetPositions(state: GameState): void {
 export interface InitOptions {
   matchId?: string;
   seed?: number;
+  matchLength?: number;
 }
 
 let matchCounter = 0;
@@ -264,6 +265,8 @@ export function initGameState(
 
   const ballCarrier = allPlayers.find((p) => p.hasBall);
 
+  const matchLength = options?.matchLength ?? GAME_DURATION;
+
   return {
     matchId: options?.matchId ?? generateMatchId(),
     seed: options?.seed ?? Math.floor(Math.random() * 0x7fffffff),
@@ -272,7 +275,8 @@ export function initGameState(
     ballCarrierId: ballCarrier?.id || null,
     possession: 'home',
     score: { home: 0, away: 0 },
-    timeRemaining: GAME_DURATION,
+    timeRemaining: matchLength,
+    matchLength,
     status: 'playing',
     homeFormation: homeName,
     awayFormation: awayName,

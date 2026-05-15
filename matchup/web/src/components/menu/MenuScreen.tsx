@@ -20,7 +20,7 @@ export function MenuScreen({ onPlay, onContinue, onTutorial, onShowRulebook, onH
   const save = loadSavedMatch();
   const hasSave = !!save;
   const saveInfo = save
-    ? `${save.state.score.home} – ${save.state.score.away} · ${Math.floor((5400 - save.state.timeRemaining) / 60)}'`
+    ? `${save.state.score.home} – ${save.state.score.away} · ${Math.floor(((save.state.matchLength ?? 5400) - save.state.timeRemaining) / 60)}'`
     : '';
 
   if (showSettings) {

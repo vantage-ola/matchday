@@ -194,7 +194,8 @@ export function useGame() {
 
   const startGame = useCallback((gameMode: GameMode, homeFormation: FormationName, awayFormation: FormationName) => {
     clearSave();
-    const engine = Engine.init(homeFormation, awayFormation);
+    const { matchLength } = loadSettings();
+    const engine = Engine.init(homeFormation, awayFormation, undefined, { matchLength });
     engineRef.current = engine;
     formationsRef.current = { home: homeFormation, away: awayFormation };
     setMode(gameMode);
@@ -208,7 +209,8 @@ export function useGame() {
   const continueMatch = useCallback(() => {
     const save = loadSavedMatch();
     if (!save) return;
-    const engine = new Engine(save.state);
+    const restoredState = { ...save.state, matchLength: save.state.matchLength ?? 5400 };
+    const engine = new Engine(restoredState);
     engineRef.current = engine;
     formationsRef.current = { home: save.homeFormation, away: save.awayFormation };
     setMode(save.mode);
