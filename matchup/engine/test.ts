@@ -380,7 +380,7 @@ console.log('\n=== PASS RISK: GEOMETRIC ONLY ===\n');
   assert(result.intercepted === false, 'defender 2 rows from line does not intercept');
 }
 
-console.log('\n=== TACKLE GAMBLE (FIXED 80%) ===\n');
+console.log('\n=== TACKLE GAMBLE (ROLE-WEIGHTED) ===\n');
 
 // 1-cell tackle, rng=0 → success: positions swap, possession flips.
 {
@@ -389,7 +389,7 @@ console.log('\n=== TACKLE GAMBLE (FIXED 80%) ===\n');
   const s = g.getState();
   const tackler = s.players.find((p) => p.id === 'away_def1')!;
   tackler.position = { col: 10, row: 'd' };
-  const g2 = new Engine(s, () => 0); // 0 < 0.80 → success
+  const g2 = new Engine(s, () => 0); // away_def1 is def (0.70); 0 < 0.70 → success
   const r = g2.applyMove(tackler.id, carrier.position);
   assert(r.valid, 'tackle move validates');
   assert(r.outcome === 'tackled', 'rng=0 yields tackled');
@@ -415,7 +415,7 @@ console.log('\n=== TACKLE GAMBLE (FIXED 80%) ===\n');
       p.position = { col: 22, row: 'a' };
     }
   }
-  const g2 = new Engine(s, () => 0.99); // 0.99 >= 0.80 → fail
+  const g2 = new Engine(s, () => 0.99); // away_def1 is def (0.70); 0.99 >= 0.70 → fail
   const r = g2.applyMove(tackler.id, carrier.position);
   assert(r.outcome === 'tackleFailed', 'rng=0.99 yields tackleFailed');
   const ns = g2.getState();
@@ -691,11 +691,17 @@ console.log('\n=== POSSESSION CHANGES MID-GAME ===\n');
 
 console.log('\n=== PREVIEW HELPER TESTS ===\n');
 
-// previewTackle is a stable shape with the engine's fixed 0.80 constant.
+// previewTackle returns role-weighted probabilities.
 {
   const g = Engine.init();
-  const tp = previewTackle(g.getState(), 'away_def1');
-  assert(tp.successProbability === 0.8, 'previewTackle returns 0.80');
+  const s = g.getState();
+  // away_def1 is a defender → 0.70
+  assert(previewTackle(s, 'away_def1').successProbability === 0.70, 'previewTackle: def → 0.70');
+  // find a mid and fwd on away team
+  const mid = s.players.find((p) => p.team === 'away' && p.role === 'mid')!;
+  const fwd = s.players.find((p) => p.team === 'away' && p.role === 'fwd')!;
+  assert(previewTackle(s, mid.id).successProbability === 0.50, 'previewTackle: mid → 0.50');
+  assert(previewTackle(s, fwd.id).successProbability === 0.20, 'previewTackle: fwd → 0.20');
 }
 
 // previewPass should agree with applyMove for a clearly intercepted pass.

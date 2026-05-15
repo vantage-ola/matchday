@@ -16,7 +16,7 @@ import {
   classifyMove,
   checkInterception,
 } from './moves.js';
-import { gridDistance, MOVE_TIME, halfTimeThresholdFor, rowToNum } from './types.js';
+import { gridDistance, MOVE_TIME, halfTimeThresholdFor, rowToNum, tackleSuccessFor } from './types.js';
 
 function describeOutcome(player: Player, outcome: Outcome, moveLabel: MoveType): string {
   switch (outcome) {
@@ -212,8 +212,8 @@ export class Engine {
     } else if (moveType === 'tackle') {
       moveTypeLabel = 'tackle';
 
-      // Fixed 80% success at 1 cell (the only legal tackle distance now).
-      const tackleSucceeds = this.rng() < 0.80;
+      // Role-weighted: defenders press best, forwards worst.
+      const tackleSucceeds = this.rng() < tackleSuccessFor(mover.role);
 
       if (tackleSucceeds) {
         outcome = 'tackled';

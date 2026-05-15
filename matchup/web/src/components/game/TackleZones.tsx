@@ -14,74 +14,79 @@ interface TackleZonesProps {
 const COLS_COUNT = 22;
 const ROWS_COUNT = ROWS.length;
 
-function cellCenter(col: number, row: string): { x: number; y: number } {
-  const x = ((col - 0.5) / COLS_COUNT) * 100;
-  const rIdx = rowToNum(row);
-  const y = ((rIdx + 0.5) / ROWS_COUNT) * 100;
-  return { x, y };
+// On a 22:11 pitch, (1/COLS_COUNT) of width == (1/ROWS_COUNT) of height in pixels,
+// so these two percentages produce a visually square (circular) element.
+const RING_W = `${100 / COLS_COUNT}%`;
+const RING_H = `${100 / ROWS_COUNT}%`;
+
+function threatStyle(pct: number): { bg: string; ring: string } {
+  if (pct >= 60) return { bg: '#dc2626', ring: 'rgba(220,38,38,0.55)' };
+  if (pct >= 35) return { bg: '#d97706', ring: 'rgba(217,119,6,0.55)' };
+  return { bg: '#16a34a', ring: 'rgba(22,163,74,0.55)' };
 }
 
 export function TackleZones({ state }: TackleZonesProps) {
-  const carrier = useMemo(() => {
-    return state.players.find((p) => p.id === state.ballCarrierId) ?? null;
-  }, [state.players, state.ballCarrierId]);
+  const carrier = useMemo(
+    () => state.players.find((p) => p.id === state.ballCarrierId) ?? null,
+    [state.players, state.ballCarrierId],
+  );
 
   const adjacentDefenders = useMemo(() => {
     if (!carrier) return [];
     return state.players.filter(
-      (p) =>
-        p.team !== carrier.team &&
-        gridDistance(p.position, carrier.position) === 1
+      (p) => p.team !== carrier.team && gridDistance(p.position, carrier.position) === 1,
     );
   }, [state.players, carrier]);
 
   if (!carrier || adjacentDefenders.length === 0) return null;
 
-  const successPct = Math.round(
-    previewTackle(state, carrier.id).successProbability * 100
-  );
-
   return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
+    <>
       {adjacentDefenders.map((d) => {
-        const { x, y } = cellCenter(d.position.col, d.position.row);
+        const pct = Math.round(previewTackle(state, d.id).successProbability * 100);
+        const rIdx = rowToNum(d.position.row);
+        const left = `${((d.position.col - 0.5) / COLS_COUNT) * 100}%`;
+        const top = `${((rIdx + 0.5) / ROWS_COUNT) * 100}%`;
+        const { bg, ring } = threatStyle(pct);
+        const flipBelow = rIdx < 2;
+
         return (
-          <g key={d.id}>
-            <circle
-              cx={x}
-              cy={y}
-              r={2.4}
-              fill="none"
-              stroke="rgba(225, 29, 72, 0.85)"
-              strokeWidth={0.5}
-              vectorEffect="non-scaling-stroke"
+          <div key={d.id}>
+            {/* True circle: width/height resolve to identical pixel sizes on 22:11 */}
+            <div
+              className="pointer-events-none absolute rounded-full"
               style={{
+                left,
+                top,
+                width: RING_W,
+                height: RING_H,
+                transform: 'translate(-50%, -50%)',
+                border: `1.5px solid ${ring}`,
                 animation: 'tackle-zone-pulse 1.4s ease-in-out infinite',
-                transformOrigin: `${x}% ${y}%`,
               }}
             />
-            <text
-              x={x + 2.2}
-              y={y - 1.8}
-              fill="rgba(225, 29, 72, 0.95)"
-              fontSize={1.6}
-              fontWeight={700}
-              textAnchor="start"
-              style={{ paintOrder: 'stroke' }}
-              stroke="rgba(0,0,0,0.4)"
-              strokeWidth={0.15}
-              vectorEffect="non-scaling-stroke"
+
+            {/* Badge — positioned above (or below for top-edge defenders) */}
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left,
+                top,
+                transform: flipBelow
+                  ? 'translate(-50%, 18px)'
+                  : 'translate(-50%, calc(-100% - 14px))',
+              }}
             >
-              {successPct}%
-            </text>
-          </g>
+              <span
+                className="block rounded-full px-1.5 py-px text-[9px] font-bold leading-none tracking-wide text-white tabular-nums"
+                style={{ backgroundColor: bg }}
+              >
+                {pct}%
+              </span>
+            </div>
+          </div>
         );
       })}
-    </svg>
+    </>
   );
 }

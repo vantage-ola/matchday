@@ -6,6 +6,7 @@ import {
   MAX_STEP_DIST,
   MAX_PASS_DIST,
   INTERCEPT_RADIUS,
+  tackleSuccessFor,
 } from './types.js';
 import { getPlayer, getBallCarrier, getPlayerAt, getTeamPlayers } from './formations.js';
 
@@ -265,16 +266,15 @@ export function previewPass(
 }
 
 /**
- * Read-only preview for a tackle attempt. The 0.80 success rate is a fixed
- * engine constant today; exposing it here lets the UI render a "80%" badge
- * without duplicating the literal, and gives future per-player attributes a
- * single point to flow through.
+ * Read-only preview for a tackle attempt. Returns the role-weighted success
+ * probability for the player attempting the tackle.
  */
 export function previewTackle(
-  _state: GameState,
-  _attackerId: string
+  state: GameState,
+  attackerId: string
 ): TacklePreview {
-  return { successProbability: 0.8 };
+  const attacker = getPlayer(state, attackerId);
+  return { successProbability: attacker ? tackleSuccessFor(attacker.role) : 0.8 };
 }
 
 /**

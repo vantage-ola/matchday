@@ -109,6 +109,18 @@ export const MAX_PASS_DIST = 10;
 // Interception: how close a defender must be to the pass line
 export const INTERCEPT_RADIUS = 1.2;
 
+// Role-weighted tackle success: defenders press best, forwards worst.
+export const TACKLE_SUCCESS_BY_ROLE: Record<Role, number> = {
+  def: 0.70,
+  mid: 0.50,
+  fwd: 0.20,
+  gk: 0.70,
+};
+
+export function tackleSuccessFor(role: Role): number {
+  return TACKLE_SUCCESS_BY_ROLE[role];
+}
+
 export const DEFAULT_MATCH_LENGTH = 5400;
 export const MOVE_TIME = 10;
 export const HALF_TIME_THRESHOLD = 2700;
