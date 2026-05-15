@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { loadSettings, updateSettings } from '@/lib/settings';
 import {
@@ -129,11 +129,21 @@ export function GameScreen({
             <ScoreBar state={state} homeFormation={homeFormation} awayFormation={awayFormation} />
           </div>
           
-          {/* Fullscreen toggle for desktop */}
-          <div className="hidden md:flex items-center">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+          {/* Desktop header controls */}
+          <div className="hidden md:flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setPaused(true)}
+              className="text-muted-foreground hover:text-foreground"
+              title="Pause"
+              aria-label="Pause"
+            >
+              <Pause size={20} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsFullscreen(!isFullscreen)}
               className="text-muted-foreground hover:text-foreground"
               title={isFullscreen ? "Show Sidebar" : "Hide Sidebar"}
@@ -144,10 +154,19 @@ export function GameScreen({
 
           <div className="md:hidden flex items-center gap-1">
              <ThemeToggle />
-             <Button variant="ghost" size="icon" onClick={() => setPaused(true)}>⏸</Button>
+             <Button
+               variant="ghost"
+               size="icon"
+               onClick={() => setPaused(true)}
+               title="Pause"
+               aria-label="Pause"
+             >
+               <Pause size={18} />
+             </Button>
           </div>
         </div>
-        <div className="relative z-10 shrink-0 mb-3">
+        {/* Mobile-only HUD: desktop renders it in the right sidebar */}
+        <div className="md:hidden relative z-10 shrink-0 mb-3">
           <MatchHud state={state} />
         </div>
         <div className="relative flex-1 min-h-0 w-full flex items-center justify-center pb-2">
@@ -194,6 +213,10 @@ export function GameScreen({
               <span>{turnLabel}</span>
             )}
           </p>
+        </div>
+
+        <div className="mt-4">
+          <MatchHud state={state} />
         </div>
 
         <div className="mt-auto grid grid-cols-2 gap-2">
